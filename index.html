@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#F7F7F5" />
+
+    <!-- Preloaded so the wordmark and the score plates render in their real
+         faces on first paint. Without this the fallback paints first and the
+         swap reflows the masthead. -->
+    <link
+      rel="preload"
+      href="/fonts/archivo-wdth-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/plex-mono-700-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <meta
+      name="description"
+      content="Dispatch — a rebalancing board that scores every Citi Bike station 0-100 for urgency and sorts worst-first."
+    />
+    <title>Dispatch — Bikeshare rebalancing board</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

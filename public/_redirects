@@ -1,0 +1,6 @@
+# Cloudflare Pages SPA rewrite.
+# The app is URL-driven (/, /station/:id, /verify) via BrowserRouter, so every
+# path must serve index.html and let the router resolve it. Without this,
+# sharing a link to a station — the whole point of making the views linkable —
+# returns a 404 on a hard load.
+/*    /index.html   200

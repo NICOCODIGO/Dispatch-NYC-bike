@@ -1,0 +1,272 @@
+/**
+ * Network-level derivations: the status strip numbers, the failure breakdown,
+ * and the one-sentence situation readout that heads the Queue.
+ *
+ * Everything here is computed from the *truck lane* unless explicitly named
+ * otherwise. The board's headline question is "where does the truck go", so a
+ * broken dock must not inflate the number a dispatcher plans their shift
+ * around. Mechanic and unverified counts are reported separately, never folded
+ * into the truck total.
+ */
+
+import type { JoinedStation } from '../data/gbfs';
+import type { Borough } from '../data/boroughs';
+import {
+  CATEGORY_LABEL,
+  type ScoreBreakdown,
+  type Signal,
+  type StationCategory,
+  scoreStation,
+} from './score';
+import { QUIET_CATEGORIES, TRUCK_CATEGORIES, triage, type Triaged } from './triage';
+
+export interface ScoredStation {
+  station: JoinedStation;
+  breakdown: ScoreBreakdown;
+}
+
+export interface NetworkSummary {
+  /** Every station the feed described. */
+  total: number;
+  /** Stations that were actually ranked (installed). */
+  ranked: number;
+
+  /** Truck-lane stations at or above the threshold — the shift's workload. */
+  needsTruck: number;
+  /** Every truck-lane station, including those below the threshold. */
+  truckLane: number;
+  /** Of `needsTruck`, which way they are failing. */
+  emptySide: number;
+  fullSide: number;
+
+  /** Routed elsewhere. Never part of the truck numbers. */
+  mechanic: number;
+  unverified: number;
+  notInstalled: number;
+
+  bikesAvailable: number;
+  usableSlots: number;
+  /** Bikes as a share of usable slots across the whole network, 0-1. */
+  networkFill: number | null;
+
+  categoryCounts: Record<StationCategory, number>;
+  /** The larger failure side among flagged truck-lane stations. */
+  dominant: { signal: Signal; count: number; share: number } | null;
+  /** The single worst truck-actionable station — where the first truck goes. */
+  worstTruck: { name: string; stationId: string; score: number } | null;
+  /** Borough holding the most of the ten worst flagged truck-lane stations. */
+  worstTen: { borough: Borough; count: number } | null;
+}
+
+const EMPTY_COUNTS = (): Record<StationCategory, number> => ({
+  not_installed: 0,
+  unusable: 0,
+  outage: 0,
+  empty: 0,
+  full: 0,
+  starving: 0,
+  flooded: 0,
+  healthy: 0,
+});
+
+/** Scores every station and returns them sorted worst-first. */
+export function scoreNetwork(
+  stations: JoinedStation[],
+  now: number,
+  p90Capacity: number,
+): ScoredStation[] {
+  return stations
+    .map((station) => ({
+      station,
+      breakdown: scoreStation(station, station.status, now, p90Capacity),
+    }))
+    .sort(compareByUrgency);
+}
+
+/** Worst first. Ties break on capacity, then name, so order is stable across
+ *  refreshes and the FLIP animation never shuffles identical rows. */
+export function compareByUrgency(a: ScoredStation, b: ScoredStation): number {
+  if (b.breakdown.score !== a.breakdown.score) return b.breakdown.score - a.breakdown.score;
+  if (b.station.capacity !== a.station.capacity) return b.station.capacity - a.station.capacity;
+  return a.station.name.localeCompare(b.station.name);
+}
+
+export function summarize(scored: ScoredStation[], lanes: Triaged): NetworkSummary {
+  const categoryCounts = EMPTY_COUNTS();
+  let ranked = 0;
+  let bikesAvailable = 0;
+  let usableSlots = 0;
+
+  for (const { station, breakdown } of scored) {
+    categoryCounts[breakdown.category]++;
+    if (breakdown.scored) {
+      ranked++;
+      // Only count slots for stations that are part of the network; an
+      // uninstalled station skews network fill for no reason.
+      bikesAvailable += station.status.bikesAvailable;
+      usableSlots += station.usableSlots;
+    }
+  }
+
+  // The workload numbers come from the truck lane only.
+  const flagged = lanes.truck.filter((s) => s.breakdown.needsTruck);
+  let emptySide = 0;
+  let fullSide = 0;
+  for (const s of flagged) {
+    if (s.breakdown.signal === 'empty') emptySide++;
+    else if (s.breakdown.signal === 'full') fullSide++;
+  }
+
+  const dominant =
+    flagged.length > 0 && (emptySide > 0 || fullSide > 0)
+      ? fullSide >= emptySide
+        ? { signal: 'full' as Signal, count: fullSide, share: fullSide / flagged.length }
+        : { signal: 'empty' as Signal, count: emptySide, share: emptySide / flagged.length }
+      : null;
+
+  const worst = lanes.truck[0];
+  const worstTruck = worst
+    ? {
+        name: worst.station.name,
+        stationId: worst.station.stationId,
+        score: worst.breakdown.score,
+      }
+    : null;
+
+  // Which borough owns the worst ten a truck can actually fix. This is the
+  // clause a dispatcher routes on.
+  const boroughTally = new Map<Borough, number>();
+  for (const s of flagged.slice(0, 10)) {
+    boroughTally.set(s.station.borough, (boroughTally.get(s.station.borough) ?? 0) + 1);
+  }
+  let worstTen: NetworkSummary['worstTen'] = null;
+  for (const [borough, count] of boroughTally) {
+    if (!worstTen || count > worstTen.count) worstTen = { borough, count };
+  }
+
+  return {
+    total: scored.length,
+    ranked,
+    needsTruck: flagged.length,
+    truckLane: lanes.truck.length,
+    emptySide,
+    fullSide,
+    mechanic: lanes.mechanic.length,
+    unverified: lanes.unverified.length,
+    notInstalled: categoryCounts.not_installed,
+    bikesAvailable,
+    usableSlots,
+    networkFill: usableSlots > 0 ? bikesAvailable / usableSlots : null,
+    categoryCounts,
+    dominant,
+    worstTruck,
+    worstTen,
+  };
+}
+
+/** Convenience for callers that have the scored list but not the lanes. */
+export function summarizeAll(scored: ScoredStation[]): NetworkSummary {
+  return summarize(scored, triage(scored));
+}
+
+const n = (v: number) => v.toLocaleString('en-US');
+
+/**
+ * The situation readout.
+ *
+ * An ops report, not a headline: plain sentences at body scale, no colored
+ * words, no emphasis. It states the workload, which way it leans, where the
+ * first truck goes, and — separately, because it is a different crew — what
+ * needs a mechanic.
+ */
+export function situationSentence(s: NetworkSummary): string {
+  if (s.ranked === 0) return 'No station data yet.';
+
+  const sentences: string[] = [];
+
+  if (s.needsTruck === 0) {
+    sentences.push(
+      s.networkFill === null
+        ? 'No station needs a truck right now.'
+        : `No station needs a truck right now — the network is ${Math.round(
+            s.networkFill * 100,
+          )}% full.`,
+    );
+  } else {
+    const lead = `${n(s.needsTruck)} station${s.needsTruck === 1 ? '' : 's'} need${
+      s.needsTruck === 1 ? 's' : ''
+    } a truck`;
+    sentences.push(
+      s.dominant
+        ? `${lead} — ${Math.round(s.dominant.share * 100)}% on the ${
+            s.dominant.signal === 'full' ? 'full' : 'empty'
+          } side.`
+        : `${lead}.`,
+    );
+
+    if (s.worstTruck) {
+      sentences.push(`The worst is ${s.worstTruck.name}.`);
+    }
+
+    if (s.worstTen && s.worstTen.count >= 3 && s.worstTen.borough !== 'Unknown') {
+      sentences.push(
+        `${s.worstTen.borough} holds ${s.worstTen.count} of the worst ${Math.min(
+          10,
+          s.needsTruck,
+        )}.`,
+      );
+    }
+  }
+
+  // Always a separate sentence: a different crew, a different vehicle.
+  const asides: string[] = [];
+  if (s.mechanic > 0) {
+    asides.push(`${n(s.mechanic)} need${s.mechanic === 1 ? 's' : ''} a mechanic`);
+  }
+  if (s.unverified > 0) {
+    asides.push(`${n(s.unverified)} ${s.unverified === 1 ? 'is' : 'are'} unverified`);
+  }
+  if (asides.length > 0) {
+    sentences.push(`Separately, ${asides.join(' and ')}.`);
+  }
+
+  return sentences.join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Failure-mode rail
+// ---------------------------------------------------------------------------
+
+export interface BreakdownRow {
+  category: StationCategory;
+  label: string;
+  count: number;
+  /** Share of the truck lane, 0-1 — the denominator the bar is drawn against. */
+  share: number;
+}
+
+/**
+ * The rail's primary block: how the truck-actionable work breaks down.
+ * Denominated against the truck lane, not the whole network, so the bars
+ * compare like with like.
+ */
+export function truckBreakdown(s: NetworkSummary): BreakdownRow[] {
+  const denom = s.truckLane || 1;
+  return TRUCK_CATEGORIES.map((category) => ({
+    category,
+    label: CATEGORY_LABEL[category],
+    count: s.categoryCounts[category],
+    share: s.categoryCounts[category] / denom,
+  }));
+}
+
+/** The rail's tertiary block: everything that needs nobody. */
+export function quietBreakdown(s: NetworkSummary): BreakdownRow[] {
+  const denom = s.ranked || 1;
+  return QUIET_CATEGORIES.map((category) => ({
+    category,
+    label: CATEGORY_LABEL[category],
+    count: s.categoryCounts[category],
+    share: s.categoryCounts[category] / denom,
+  }));
+}
