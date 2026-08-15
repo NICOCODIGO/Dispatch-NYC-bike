@@ -1,38 +1,35 @@
-import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { Header } from './components/Header';
-import { Footer } from './components/Footer';
-import { Queue } from './screens/Queue';
-import { Verify } from './screens/Verify';
-import { startPolling } from './store/useDispatch';
+import { AppShell } from './shell/AppShell';
+import { PriorityQueue } from './views/PriorityQueue';
+import { MapView } from './views/MapView';
+import { TruckDispatch } from './views/TruckDispatch';
+import { Unverified } from './views/Unverified';
+import { Mechanics } from './views/Mechanics';
+import { Analytics } from './views/Analytics';
+import { ZoneView } from './views/ZoneView';
 
+/**
+ * Routes.
+ *
+ * This build renders entirely from fixtures in `src/mock`. The GBFS client, the
+ * scoring model and the polling store are intact and untouched in `src/data`,
+ * `src/model` and `src/store` — nothing here imports them yet. Wiring the feed
+ * back in means replacing the fixture imports inside `src/views`, not
+ * rebuilding the views.
+ */
 export default function App() {
-  useEffect(() => startPolling(), []);
-
   return (
-    <div className="flex min-h-screen flex-col">
-      <a
-        href="#main"
-        className="sr-only bg-[var(--ink)] px-4 py-2 text-[var(--paper)] focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50"
-      >
-        Skip to the queue
-      </a>
-
-      <Header />
-
-      <main id="main" className="flex-1">
-        <Routes>
-          <Route path="/" element={<Queue />} />
-          {/* A station is not a page — it is the queue with one row opened. The
-              deep link survives so stations stay shareable, but arriving at one
-              lands you on the board, not on an island. */}
-          <Route path="/station/:id" element={<Queue />} />
-          <Route path="/verify" element={<Verify />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-
-      <Footer />
-    </div>
+    <AppShell>
+      <Routes>
+        <Route path="/" element={<PriorityQueue />} />
+        <Route path="/map" element={<MapView />} />
+        <Route path="/trucks" element={<TruckDispatch />} />
+        <Route path="/unverified" element={<Unverified />} />
+        <Route path="/mechanics" element={<Mechanics />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/zone/:slug" element={<ZoneView />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AppShell>
   );
 }

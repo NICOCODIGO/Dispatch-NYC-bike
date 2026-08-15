@@ -4,14 +4,11 @@
    Fonts.
 
    Declared by hand against stable paths in /public rather than imported from
-   fontsource, for two reasons: the bundler hashes fontsource's filenames, so
-   they cannot be <link rel="preload">ed from index.html — and preloading is
-   what stops the wordmark from reflowing when Archivo swaps in. Only the Latin
-   subsets ship; the app is English and station names are ASCII, which drops
-   Cyrillic, Greek and Vietnamese cuts from the payload.
+   fontsource, so they can be <link rel="preload">ed from index.html.
 
-   Archivo is the two-axis variable cut (wght 100-900, wdth 62-125%): one file
-   serves body copy and the expanded display type.
+   Archivo is the two-axis variable cut (wght 100-900, wdth 62-125%). The ops
+   console uses it at normal width as a neutral grotesque; the expanded display
+   cuts from the previous design are gone.
 --------------------------------------------------------------------------- */
 @font-face {
   font-family: 'Archivo Variable';
@@ -47,74 +44,61 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Design tokens. Mirrored in tokens.md.
-   These are the ONLY colors in the app. There is no dark mode in v1 — this is
-   a tool used in daylight, and a second theme would double the surface area
-   of the one thing that must never be ambiguous: what the signal colors mean.
+   Design tokens.
+
+   Warm ops console: a cream paper field, white cards, and a near-black warm
+   brown chrome rail. Every neutral carries a little red/yellow so nothing on
+   the page reads as cold grey.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Warm neutrals. The canvas is tinted rather than stark white so the page
-     reads as printed stock — municipal paperwork, not a blank browser. */
-  --color-paper: #f5f4f0;
+  /* ---- Neutrals -------------------------------------------------------- */
+  --color-canvas: #f6f3ec;
   --color-surface: #ffffff;
-  --color-ink: #17191e;
-  --color-ink-soft: #5a5f6a;
-  --color-line: #e2e0da;
+  --color-sunken: #faf8f3;
+  --color-line: #e9e3d7;
+  --color-line-soft: #f0ebe1;
 
-  /* ---- Identity -------------------------------------------------------
-     Safety orange: hi-vis vests, cones, the trucks themselves. The accent is
-     the subject's own color, which is why it can carry identity without
-     competing with the data.
+  --color-ink: #2b2621;
+  --color-ink-2: #6f665a;
+  --color-ink-3: #9a9083;
 
-     It marks the APP and nothing else — wordmark, active nav, focus rings,
-     selected row, active filter, links, primary buttons. It never appears on a
-     plate, a bar, a delta or a status, because the moment orange means "empty"
-     as well as "the app", both meanings are gone. */
-  --color-accent: #e8600a;
-  /* #E8600A is 3.44:1 on white — clears the 3:1 bar for rings and edges, but
-     not the 4.5:1 body-text minimum. This darker cut (4.79:1) carries accent
-     *text* and button fills. */
-  --color-accent-ink: #c24e05;
+  /* ---- Chrome (the sidebar rail) --------------------------------------- */
+  --color-rail: #2b2621;
+  --color-rail-hi: #3a332b;
+  --color-rail-line: #3d362e;
+  --color-rail-ink: #ffffff;
+  --color-rail-ink-2: #a79e90;
+  --color-rail-ink-3: #6e655a;
 
-  /* ---- Signals --------------------------------------------------------
-     Empty and full are deliberately NOT two reds: they are different problems
-     requiring opposite truck actions (drop off vs pick up), and the interface
-     should teach that distinction on sight. */
-  --color-signal-empty: #d6453d;
-  --color-signal-full: #4b44c9;
-  --color-signal-outage: #16181d;
-  --color-signal-ok: #1f7a46;
+  /* ---- Signals ---------------------------------------------------------
+     Empty/critical is red, flooded is blue, low-stock/warning is amber and
+     healthy is green. Each ships a `-bg` tint for badge fills and a `-line`
+     for their hairlines. */
+  --color-empty: #c0453a;
+  --color-empty-bg: #fbeeec;
+  --color-empty-line: #f0d3ce;
 
-  /* Red is the only signal color marginal as small text: #D6453D is 4.40:1 on
-     white, just under the body-text minimum (indigo is 7.1:1, green 5.3:1).
-     This cut reads as the same red at 5.07:1 and is used wherever a signal
-     color becomes a word rather than a mark. */
-  --color-signal-empty-ink: #c63e36;
+  --color-flood: #2e6fa8;
+  --color-flood-bg: #ebf2f8;
+  --color-flood-line: #cddeeb;
 
-  --font-display: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-warn: #c98626;
+  --color-warn-bg: #fbf2e3;
+  --color-warn-line: #eeddbf;
+
+  --color-ok: #2f7a52;
+  --color-ok-bg: #ecf4ef;
+  --color-ok-line: #cee0d5;
+
+  --color-mute: #9a9083;
+  --color-mute-bg: #f3f0e9;
+  --color-mute-line: #e4ded2;
+
+  --font-sans: 'Archivo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-/* Short token names, aliased to the theme values so hand-written CSS and the
-   generated utility classes can never drift apart.
-
-   There is no amber. Staleness used to be a color; it is now a lane — stations
-   whose counts cannot be trusted are quarantined in their own section rather
-   than tinted in place, so nothing on the board is amber. */
 :root {
-  --paper: var(--color-paper);
-  --surface: var(--color-surface);
-  --ink: var(--color-ink);
-  --ink-soft: var(--color-ink-soft);
-  --line: var(--color-line);
-  --accent: var(--color-accent);
-  --accent-ink: var(--color-accent-ink);
-  --signal-empty: var(--color-signal-empty);
-  --signal-empty-ink: var(--color-signal-empty-ink);
-  --signal-full: var(--color-signal-full);
-  --signal-outage: var(--color-signal-outage);
-  --signal-ok: var(--color-signal-ok);
-
   color-scheme: light;
 }
 
@@ -124,30 +108,23 @@
   }
 
   body {
-    background-color: var(--paper);
-    color: var(--ink);
-    font-family: var(--font-display);
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
     font-synthesis-weight: none;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
-  /* Every numeral in this app is data and must line up in a column.
-     Tabular figures are also what keeps refresh from shifting layout. */
-  :where(body) {
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* 2px accent ring, offset. Focus is app chrome, not data — orange. */
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--color-ink);
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: 4px;
   }
 
   ::selection {
-    background: var(--ink);
-    color: var(--paper);
+    background: var(--color-ink);
+    color: var(--color-canvas);
   }
 
   button {
@@ -156,329 +133,109 @@
 }
 
 @layer components {
-  /* Display type: Archivo Expanded Black. Used for the wordmark and section
-     headers only — the condensed-industrial signage voice. */
-  .display {
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-stretch: 118%;
-    letter-spacing: -0.005em;
-  }
-
-  .display-black {
-    font-family: var(--font-display);
-    font-weight: 900;
-    font-stretch: 125%;
-    letter-spacing: 0.005em;
-  }
-
-  /* All numerals. */
+  /* Every numeral in the console is instrumentation: mono, tabular, so digits
+     swap without shifting layout. */
   .num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum' 1, 'zero' 1;
+    font-feature-settings: 'tnum' 1;
   }
 
-  /* Tiny uppercase labels — the only uppercase in the app. */
+  /* Tiny uppercase label — card titles, column heads, section dividers. */
   .eyebrow {
-    font-family: var(--font-display);
-    font-size: 11px;
-    line-height: 1;
+    font-size: 10px;
+    line-height: 1.1;
     font-weight: 600;
     letter-spacing: 0.09em;
     text-transform: uppercase;
-    color: var(--ink-soft);
+    color: var(--color-ink-2);
   }
 
-  .hairline {
-    border-color: var(--line);
-  }
-
-  /* Status strip: one object divided by hairlines, never six boxes.
-     At 390px it wraps to 2x3, then 3x2, then a single row of six. */
-  .status-strip {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-block: 1px solid var(--line);
-  }
-
-  .status-strip > * {
-    padding: 12px 24px;
-    border-left: 1px solid var(--line);
-    border-top: 1px solid var(--line);
-    min-width: 0;
-  }
-
-  .status-strip > *:nth-child(2n + 1) {
-    border-left: 0;
-    padding-left: 0;
-  }
-
-  .status-strip > *:nth-child(-n + 2) {
-    border-top: 0;
-  }
-
-  @media (min-width: 640px) {
-    .status-strip {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .status-strip > * {
-      border-left: 1px solid var(--line);
-      padding-left: 24px;
-    }
-
-    .status-strip > *:nth-child(3n + 1) {
-      border-left: 0;
-      padding-left: 0;
-    }
-
-    .status-strip > *:nth-child(-n + 3) {
-      border-top: 0;
-    }
-
-    .status-strip > *:nth-child(n + 4) {
-      border-top: 1px solid var(--line);
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .status-strip {
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-    }
-
-    .status-strip > * {
-      border-top: 0;
-      border-left: 1px solid var(--line);
-      padding-left: 20px;
-      padding-right: 12px;
-    }
-
-    .status-strip > *:first-child {
-      border-left: 0;
-      padding-left: 0;
-    }
-  }
-
-  /* ------------------------------------------------------------------------
-     The queue table.
-
-     A real <table> on desktop for semantics and keyboard behaviour, restructured
-     into stacked cards below 760px. Rows are generously spaced — this is a
-     control room, not a spreadsheet.
-  ------------------------------------------------------------------------ */
-  .queue-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-  }
-
-  .queue-table thead th {
-    padding: 0 12px 10px;
-    border-bottom: 1px solid var(--line);
-    text-align: left;
-    vertical-align: bottom;
-  }
-
-  /* Gutter rules are desktop-only. Left unscoped they leak into the mobile card
-     layout, where a padded first cell overflows its 38px plate column and
-     shunts the station name on top of the plate. */
-  @media (min-width: 760px) {
-    .queue-table thead th:first-child,
-    .queue-table tbody td:first-child {
-      padding-left: 16px;
-    }
-
-    .queue-table thead th:last-child,
-    .queue-table tbody td:last-child {
-      padding-right: 16px;
-    }
-  }
-
-  .queue-row > td {
-    padding: 14px 12px;
-    border-bottom: 1px solid var(--line);
-    vertical-align: middle;
-  }
-
-  .queue-row:hover {
-    background: var(--paper);
-  }
-
-  /* The hover card needs a positioning context that is not clipped. */
-  .queue-row .cell-name {
-    position: relative;
-  }
-
-  /* Selectors below are qualified with .queue-table on both sides so the mobile
-     card rules outrank the `.queue-table tr { display: block }` reset. Without
-     that, `display: block` (0,1,1) beats a bare `.queue-row` (0,1,0) and the
-     grid silently never applies. */
-  @media (max-width: 759px) {
-    .queue-table,
-    .queue-table tbody,
-    .queue-table td {
-      display: block;
-    }
-
-    .queue-table thead {
-      display: none;
-    }
-
-    .queue-table .queue-row {
-      display: grid;
-      grid-template-columns: 38px minmax(0, 1fr) auto;
-      grid-template-areas:
-        'plate name     name'
-        'plate category reported'
-        'bar   bar      bar';
-      column-gap: 12px;
-      row-gap: 4px;
-      align-items: center;
-      padding: 16px 4px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .queue-table .queue-row > td {
-      padding: 0;
-      border-bottom: 0;
-    }
-
-    .queue-table .queue-row .cell-plate {
-      grid-area: plate;
-      align-self: start;
-    }
-    .queue-table .queue-row .cell-name {
-      grid-area: name;
-    }
-    .queue-table .queue-row .cell-category {
-      grid-area: category;
-      align-self: start;
-    }
-    .queue-table .queue-row .cell-reported {
-      grid-area: reported;
-      text-align: right;
-      align-self: start;
-    }
-    .queue-table .queue-row .cell-bar {
-      grid-area: bar;
-      margin-top: 8px;
-    }
-  }
-
-  /* The open station's row keeps an accent edge so the panel is visibly
-     *about* something on the list behind it. */
-  .queue-row[data-selected='true'] {
-    background: var(--paper);
-  }
-
-  .queue-row[data-selected='true'] > td:first-child {
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-
-  /* ------------------------------------------------------------------------
-     Detail panel. A drawer over the rail, not a page: the queue stays on
-     screen and interactive so scan -> check -> scan never leaves the list.
-  ------------------------------------------------------------------------ */
-  .drawer {
-    position: fixed;
-    inset-block: 0;
-    right: 0;
-    width: 440px;
-    max-width: 100vw;
-    background: var(--surface);
-    border-left: 1px solid var(--line);
-    box-shadow: -1px 0 0 rgb(23 25 30 / 6%);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    z-index: 40;
-    animation: drawer-in 180ms cubic-bezier(0.2, 0.7, 0.3, 1);
-  }
-
-  @keyframes drawer-in {
-    from {
-      transform: translateX(14px);
-      opacity: 0;
-    }
-    to {
-      transform: none;
-      opacity: 1;
-    }
-  }
-
-  @media (max-width: 759px) {
-    .drawer {
-      width: 100vw;
-      border-left: 0;
-    }
-  }
-
-  /* Mono eyebrow — the situation readout's dateline. */
   .eyebrow-mono {
     font-family: var(--font-mono);
-    font-size: 11px;
-    line-height: 1;
-    letter-spacing: 0.07em;
+    font-size: 10px;
+    line-height: 1.1;
+    font-weight: 500;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: var(--ink-soft);
-    font-variant-numeric: tabular-nums;
+    color: var(--color-ink-2);
   }
 
-  /* Numbers that align on the slash: 0/28 over 81/0 over 77/0. */
-  .slash-pair {
-    display: inline-grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: baseline;
+  /* The standard panel: white, hairline, 10px radius. */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
   }
 
-  .slash-pair > :first-child {
-    text-align: right;
+  /* Scrollbars inside the console read as part of the furniture. */
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
   }
 
-  .slash-pair > :last-child {
-    text-align: left;
+  .thin-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 999px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-track {
+    background: transparent;
   }
 }
 
 /* ---------------------------------------------------------------------------
-   Motion. Exactly one orchestrated moment: on refresh, rows re-sort with a
-   ~200ms FLIP and changed plates tick. Nothing else in the app animates.
+   Motion. The drawer slides, rows tint on hover, nothing else moves.
 --------------------------------------------------------------------------- */
-@keyframes plate-tick {
-  0% {
-    transform: translateY(0);
-  }
-  35% {
-    transform: translateY(-2px);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
-.plate-tick {
-  animation: plate-tick 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
-}
-
-@keyframes value-fade {
+@keyframes drawer-in {
   from {
-    opacity: 0.35;
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.drawer-in {
+  animation: drawer-in 200ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
   to {
     opacity: 1;
   }
 }
 
-.value-fade {
-  animation: value-fade 200ms ease-out;
+.fade-in {
+  animation: fade-in 160ms ease-out;
+}
+
+/* A slow breathing dot for "live" indicators. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 2.4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Reduced motion gets the crossfade, never the movement. */
-  .plate-tick {
-    animation: value-fade 200ms ease-out;
-  }
-
   *,
   *::before,
   *::after {
@@ -488,15 +245,8 @@
     scroll-behavior: auto !important;
   }
 
-  .value-fade,
-  .plate-tick {
-    animation-duration: 200ms !important;
+  .drawer-in,
+  .fade-in {
+    animation: fade-in 200ms ease-out !important;
   }
-}
-
-/* Skeleton shimmer is a static tint, not a pulse — no spinners, no throbbing. */
-.skeleton {
-  background: linear-gradient(var(--line), var(--line));
-  background-size: 100% 100%;
-  border-radius: 2px;
 }
