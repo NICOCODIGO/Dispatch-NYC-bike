@@ -1,9 +1,15 @@
 import { Navigate, useParams } from 'react-router-dom';
 import { PageBody, PageHeader } from '../shell/AppShell';
 import { Icon } from '../ui/Icon';
-import { Bar, Button, Card, ScoreBadge, StatCard, Td, Th } from '../ui/primitives';
+import { Bar, Button, Card, StatCard, Td, Th } from '../ui/primitives';
+import { ScorePeek } from '../ui/ScorePeek';
+import { TipAction, TipBody, TipTitle, Tooltip } from '../ui/Tooltip';
+import { COLUMN_HELP } from '../content/columns';
 import { TONE } from '../ui/tone';
 import { useConsole } from '../state/useConsole';
+import { useDispatch } from '../store/useDispatch';
+import { zoneStats } from '../data/insights';
+import { toStationRow } from '../data/adapt';
 import { ZONES, zoneDetail } from '../mock/data';
 
 /**
@@ -16,22 +22,42 @@ import { ZONES, zoneDetail } from '../mock/data';
 export function ZoneView() {
   const { slug = '' } = useParams();
   const openStation = useConsole((s) => s.openStation);
-  const zone = ZONES.find((z) => z.slug === slug);
-  if (!zone) return <Navigate to="/" replace />;
+  const scored = useDispatch((s) => s.scored);
+  const phase = useDispatch((s) => s.phase);
 
-  const d = zoneDetail(zone.slug);
+  const live = zoneStats(scored, slug);
+  const fixture = ZONES.find((z) => z.slug === slug);
+
+  // Before the first poll there is nothing to resolve the slug against, so the
+  // fixture list stands in rather than bouncing the user back to the queue.
+  if (!live && !fixture) {
+    if (phase === 'loading') {
+      return (
+        <PageBody className="text-[12px] text-[var(--color-ink-3)]">Reading the live feed…</PageBody>
+      );
+    }
+    return <Navigate to="/" replace />;
+  }
+
+  const zone = live ?? { slug, name: fixture!.name, stations: fixture!.stations };
+  const d = zoneDetail(fixture?.slug ?? 'manhattan');
+  // Arrow, not a bare reference: `map` passes the index as the second argument
+  // and `toStationRow` now takes a duration there.
+  const ranked = live ? live.ranked.slice(0, 8).map((s) => toStationRow(s)) : d.ranked;
+  const needsDispatch = live ? live.needsTruck : d.needsDispatch;
+  const avgFill = live?.avgFill ?? d.avgFill;
 
   return (
     <>
       <PageHeader
         title={`${zone.name} Operations`}
-        subtitle={`${zone.stations} total stations · ${d.needsDispatch} at critical score threshold`}
+        subtitle={`${zone.stations.toLocaleString('en-US')} stations, ${needsDispatch} of them needing a truck right now${live ? `. ${live.unverified} not reporting, ${live.mechanic} mechanically out of service.` : '.'}`}
         actions={
           <>
             <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1.5 text-[11px] text-[var(--color-ink-2)]">
               AVG FILL:
               <span className="num font-semibold" style={{ color: TONE.ok.fg }}>
-                {Math.round(d.avgFill * 100)}%
+                {avgFill === null ? '–' : `${Math.round(avgFill * 100)}%`}
               </span>
             </span>
             <Button variant="dark">Assign Zone Truck</Button>
@@ -43,31 +69,35 @@ export function ZoneView() {
         <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
           <StatCard
             label="Needs dispatch"
-            value={d.needsDispatch}
+            value={needsDispatch.toLocaleString('en-US')}
             tone="empty"
-            foot="score ≥ 70"
+            foot={`${zone.stations > 0 ? Math.round((needsDispatch / zone.stations) * 100) : 0}% of the zone`}
           />
           <StatCard
-            label="Assigned trucks"
-            value={d.assignedTrucks}
-            foot="of 5 en-route total"
+            label="Not reporting"
+            value={live ? live.unverified : '—'}
+            tone={live && live.unverified > 0 ? 'warn' : 'ink'}
+            foot="excluded from scoring"
           />
           <StatCard
-            label="Chronic offenders"
-            value={d.chronicOffenders}
-            tone="warn"
-            foot="freq critical > 10d"
+            label="Out of service"
+            value={live ? live.mechanic : '—'}
+            tone={live && live.mechanic > 0 ? 'empty' : 'ink'}
+            foot="needs a mechanic"
           />
           <StatCard
             label="Zone avg fill"
-            value={Math.round(d.avgFill * 100)}
-            unit="%"
+            value={avgFill === null ? '—' : Math.round(avgFill * 100)}
+            unit={avgFill === null ? undefined : '%'}
             tone="ok"
-            foot="stable vs benchmark"
+            foot="bikes per usable slot"
           />
         </div>
 
-        <ClusterPanel title={d.clusterTitle} detail={d.clusterDetail} />
+        <ClusterPanel
+          title={`${zone.name} priority clusters`}
+          detail={`${needsDispatch} station${needsDispatch === 1 ? '' : 's'} above the threshold across ${zone.name}`}
+        />
 
         <Card className="mt-3.5 overflow-hidden">
           <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-3">
@@ -82,7 +112,7 @@ export function ZoneView() {
             </span>
           </div>
 
-          {d.ranked.length === 0 ? (
+          {ranked.length === 0 ? (
             <p className="border-t border-[var(--color-line)] px-4 py-10 text-center text-[12px] text-[var(--color-ink-3)]">
               No stations in {zone.name} are above the dispatch threshold right now.
             </p>
@@ -94,17 +124,19 @@ export function ZoneView() {
                     Rank
                   </Th>
                   <Th>Station Name &amp; Capacity</Th>
-                  <Th width={100} align="right">
+                  <Th width={100} align="right" help={COLUMN_HELP.urgency}>
                     Urgency
                   </Th>
-                  <Th width={220}>Fill Status</Th>
+                  <Th width={220} help={COLUMN_HELP.fillStatus}>
+                    Fill Status
+                  </Th>
                   <Th width={80} align="right">
                     Action
                   </Th>
                 </tr>
               </thead>
               <tbody>
-                {d.ranked.map((s, i) => (
+                {ranked.map((s, i) => (
                   <tr
                     key={s.id}
                     onClick={() => openStation(s.id)}
@@ -123,7 +155,11 @@ export function ZoneView() {
                       </span>
                     </Td>
                     <Td align="right">
-                      <ScoreBadge score={s.score} size="sm" />
+                      <ScorePeek
+                        breakdown={s.breakdown}
+                        size="sm"
+                        onOpen={() => openStation(s.id)}
+                      />
                     </Td>
                     <Td>
                       <span className="block w-[110px]">
@@ -136,13 +172,27 @@ export function ZoneView() {
                       </span>
                     </Td>
                     <Td align="right">
-                      <button
-                        type="button"
-                        aria-label={`Details for ${s.name}`}
-                        className="text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
+                      <Tooltip
+                        content={
+                          <>
+                            <TipTitle>{s.name}</TipTitle>
+                            <TipBody>
+                              The full receipt — every step of how this station&rsquo;s urgency
+                              was calculated, and what a truck should do when it arrives.
+                            </TipBody>
+                            <TipAction>Opens the score breakdown</TipAction>
+                          </>
+                        }
                       >
-                        <Icon name="info" size={14} />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => openStation(s.id)}
+                          aria-label={`Open the score breakdown for ${s.name}`}
+                          className="inline-flex cursor-pointer text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
+                        >
+                          <Icon name="info" size={14} />
+                        </button>
+                      </Tooltip>
                     </Td>
                   </tr>
                 ))}

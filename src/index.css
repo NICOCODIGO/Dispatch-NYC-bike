@@ -82,6 +82,15 @@
   --color-flood-bg: #ebf2f8;
   --color-flood-line: #cddeeb;
 
+  /* The full-side warning, to `flood` what `warn` is to `empty`. Warm hues
+     mean nobody can rent, cool hues mean nobody can return; saturation within
+     each carries severity. Without this, "low stock" and "flooded" collide on
+     the same amber and the legend shows two identical swatches for opposite
+     problems. */
+  --color-flood-soft: #6b9ec7;
+  --color-flood-soft-bg: #eff5fa;
+  --color-flood-soft-line: #d9e6f1;
+
   --color-warn: #c98626;
   --color-warn-bg: #fbf2e3;
   --color-warn-line: #eeddbf;
@@ -186,6 +195,51 @@
 
   .thin-scroll::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  /**
+   * Scrolls, shows nothing, and reserves nothing.
+   *
+   * For overlay panels. A visible scrollbar inside a fixed-width drawer costs
+   * twice: it is furniture nobody asked for, and because it only appears once
+   * the content overflows, the whole panel jumps sideways the moment you
+   * expand a section. A zero-width bar takes no space in either state, so the
+   * layout cannot shift.
+   *
+   * Deliberately not used on the main work area — a two-thousand-row table
+   * should tell you how far down it goes.
+   */
+  .hide-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .hide-scroll::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+
+  /**
+   * Numbers that align on the slash: 115/0 over 83/0 over 0/69.
+   *
+   * Right-aligning the pair only lines up the trailing number, and it made
+   * this the one right-aligned header in a row of eight left-aligned ones, so
+   * the label floated 65px away from the data it names. Aligning on the
+   * separator instead lets the whole column sit left like its neighbours while
+   * both digits still stack cleanly.
+   */
+  .slash-pair {
+    display: inline-grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: baseline;
+  }
+
+  .slash-pair > :first-child {
+    text-align: right;
+  }
+
+  .slash-pair > :last-child {
+    text-align: left;
   }
 }
 

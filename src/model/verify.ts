@@ -30,7 +30,7 @@ export const OUTCOME_LABEL: Record<Outcome, string> = {
 
 /** Definitions rendered in the UI, written from the constants above. */
 export const OUTCOME_DEFINITIONS: Record<Outcome, string> = {
-  resolved: `Score dropped below the truck threshold (${NEEDS_TRUCK_THRESHOLD}) since first flagged.`,
+  resolved: `Score dropped below the dispatch threshold (${NEEDS_TRUCK_THRESHOLD}) since first flagged.`,
   'still-failing': `Still at or above ${NEEDS_TRUCK_THRESHOLD}, and no more than ${OUTCOME_DELTA_TOLERANCE} points worse than the first reading.`,
   worsened: `Still at or above ${NEEDS_TRUCK_THRESHOLD}, and rose more than ${OUTCOME_DELTA_TOLERANCE} points since first flagged.`,
 };

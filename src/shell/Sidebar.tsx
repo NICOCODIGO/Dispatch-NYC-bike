@@ -1,7 +1,10 @@
 import { NavLink } from 'react-router-dom';
 import { Icon, type IconName } from '../ui/Icon';
-import { CONSOLE_CLOCK, UNVERIFIED, ZONES } from '../mock/data';
+import { ZONES } from '../mock/data';
+import { liveZones } from '../data/insights';
 import { useConsole } from '../state/useConsole';
+import { POLL_INTERVAL_MS, useDispatch } from '../store/useDispatch';
+import { formatAgo, formatClock, useTicker } from '../lib/time';
 import { cn } from '../lib/cn';
 
 /**
@@ -25,16 +28,23 @@ const DISPATCH_NAV: NavItem[] = [
   { to: '/', label: 'Priority Queue', icon: 'list-ordered', end: true },
   { to: '/map', label: 'Map View', icon: 'map' },
   { to: '/trucks', label: 'Truck Dispatch', icon: 'truck' },
+  { to: '/history', label: 'Dispatch History', icon: 'clipboard-list' },
 ];
 
 export function Sidebar() {
-  // Badges count the real lists, so escalating a node from Unverified moves
-  // the Mechanic Alerts badge as it happens.
+  // Badges count the real lanes, so escalating a node from Unverified moves
+  // the Mechanic Alerts badge as it happens, and both track the live feed.
   const ticketCount = useConsole((s) => s.tickets.length);
+  const unverified = useDispatch((s) => s.lanes.unverified.length);
+  const faults = useDispatch((s) => s.lanes.mechanic.length);
+  const scored = useDispatch((s) => s.scored);
+
+  // Fixture list only until the first poll lands, so the rail is never empty.
+  const zones = scored.length > 0 ? liveZones(scored) : ZONES;
 
   const monitoringNav: NavItem[] = [
-    { to: '/unverified', label: 'Unverified', icon: 'alert-triangle', badge: UNVERIFIED.length },
-    { to: '/mechanics', label: 'Mechanic Alerts', icon: 'wrench', badge: ticketCount },
+    { to: '/unverified', label: 'Unverified', icon: 'alert-triangle', badge: unverified },
+    { to: '/mechanics', label: 'Mechanic Alerts', icon: 'wrench', badge: faults + ticketCount },
     { to: '/analytics', label: 'Analytics', icon: 'line-chart' },
   ];
 
@@ -57,7 +67,7 @@ export function Sidebar() {
         </Group>
 
         <Group label="Zones" className="mt-5">
-          {ZONES.map((z) => (
+          {zones.map((z) => (
             <NavRow key={z.slug} to={`/zone/${z.slug}`} label={z.name} count={z.stations} />
           ))}
         </Group>
@@ -88,21 +98,43 @@ function Brand() {
 }
 
 /**
- * The heartbeat line. Static in this build — the clock and the interval are
- * fixtures, not a real poll, and nothing here should imply otherwise until the
- * feed is wired back in.
+ * The heartbeat.
+ *
+ * One place in the app states how fresh everything is, and it is here rather
+ * than on a card — the age of the feed qualifies every number on every screen,
+ * so attaching it to one statistic implied it was about that statistic.
+ *
+ * Its own component so the one-second tick repaints twelve pixels of chrome
+ * instead of a table of two thousand rows.
  */
 function LiveStrip() {
+  const fetchedAtMs = useDispatch((s) => s.fetchedAtMs);
+  const error = useDispatch((s) => s.error);
+  const now = useTicker(1000);
+
+  const stale = fetchedAtMs !== null && now - fetchedAtMs > POLL_INTERVAL_MS * 2;
+  const dot = error || stale ? '#c0453a' : '#4ea373';
+
   return (
-    <div className="flex items-center justify-between border-b border-[var(--color-rail-line)] px-3 py-2">
+    <div
+      className="flex items-center justify-between border-b border-[var(--color-rail-line)] px-3 py-2"
+      title={
+        error
+          ? `Feed unreachable: ${error.message}. Showing the last good data and retrying.`
+          : 'The board polls every 60 seconds while this tab is visible.'
+      }
+    >
       <span className="flex items-center gap-1.5 text-[9px] text-[var(--color-rail-ink-2)]">
         <span
           aria-hidden="true"
-          className="pulse-dot h-[5px] w-[5px] rounded-full bg-[#4ea373]"
+          className={cn('h-[5px] w-[5px] rounded-full', !error && !stale && 'pulse-dot')}
+          style={{ backgroundColor: dot }}
         />
-        Live · syncs every 60s
+        {error ? 'Retrying' : fetchedAtMs === null ? 'Connecting…' : `Updated ${formatAgo(now - fetchedAtMs)} ago`}
       </span>
-      <span className="num text-[9px] text-[var(--color-rail-ink-3)]">{CONSOLE_CLOCK}</span>
+      <span className="num text-[9px] text-[var(--color-rail-ink-3)]">
+        {fetchedAtMs === null ? '--:--' : formatClock(fetchedAtMs).slice(0, 5)}
+      </span>
     </div>
   );
 }

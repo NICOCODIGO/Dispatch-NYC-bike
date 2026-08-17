@@ -42,7 +42,10 @@ export type IconName =
   | 'trending-down'
   | 'move-horizontal'
   | 'arrow-up'
-  | 'arrow-down';
+  | 'arrow-down'
+  | 'check'
+  | 'check-circle'
+  | 'minus-circle';
 
 const PATHS: Record<IconName, ReactNode> = {
   bike: (
@@ -201,6 +204,19 @@ const PATHS: Record<IconName, ReactNode> = {
   'move-horizontal': <path d="m18 8 4 4-4 4M6 8l-4 4 4 4M2 12h20" />,
   'arrow-up': <path d="m5 12 7-7 7 7M12 19V5" />,
   'arrow-down': <path d="M12 5v14m7-7-7 7-7-7" />,
+  check: <path d="M20 6 9 17l-5-5" />,
+  'check-circle': (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m8.5 12.5 2.5 2.5 4.5-5" />
+    </>
+  ),
+  'minus-circle': (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 12h8" />
+    </>
+  ),
 };
 
 export function Icon({
@@ -208,11 +224,13 @@ export function Icon({
   size = 16,
   className,
   strokeWidth = 2,
+  style,
 }: {
   name: IconName;
   size?: number;
   className?: string;
   strokeWidth?: number;
+  style?: React.CSSProperties;
 }) {
   return (
     <svg
@@ -227,7 +245,7 @@ export function Icon({
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
-      style={{ flexShrink: 0 }}
+      style={{ flexShrink: 0, ...style }}
     >
       {PATHS[name]}
     </svg>

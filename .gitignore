@@ -7,3 +7,15 @@ dist-ssr
 coverage
 .wrangler
 *.tsbuildinfo
+
+# Throwaway browser-verification harnesses. Three of these were committed once
+# by a `git add -A` and sat in the repo for weeks.
+__*.mjs
+
+# Secrets. `.env.example` is committed; the real one is not. Note that Vite
+# inlines every VITE_* var into the client bundle at build time, so nothing
+# here is hidden from a user — it is kept out of git, which is a different
+# thing. Never put a secret key in a VITE_ var.
+.env
+.env.local
+.env.*.local

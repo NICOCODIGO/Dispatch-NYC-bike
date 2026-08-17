@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
+import { TipBody, TipTitle, Tooltip } from './Tooltip';
+import { linkifyNode } from '../content/definitions';
 import { TONE, toneForScore, type Tone } from './tone';
 import { cn } from '../lib/cn';
 
@@ -37,7 +39,7 @@ export function CardHead({
   className?: string;
 }) {
   return (
-    <div className={cn('flex items-center justify-between gap-3 px-3 pt-3 pb-2.5', className)}>
+    <div className={cn('flex items-center justify-between gap-3 px-3.5 pt-3 pb-2.5', className)}>
       <h2 className="eyebrow text-[9px]">{title}</h2>
       {right}
     </div>
@@ -305,6 +307,14 @@ export interface StatCardProps {
   onClick?: () => void;
   /** What activating it does, for screen readers. */
   actionLabel?: string;
+  /**
+   * The definition, for anyone who does not already know the vocabulary.
+   *
+   * The label says what it is and the footer says what it means; this is the
+   * third layer — why the number is drawn the way it is, and what to do about
+   * it. Marked with a quiet dot so it is discoverable without shouting.
+   */
+  hint?: string;
 }
 
 /**
@@ -326,6 +336,7 @@ export function StatCard({
   to,
   onClick,
   actionLabel,
+  hint,
 }: StatCardProps) {
   const interactive = Boolean(to || onClick);
 
@@ -333,11 +344,18 @@ export function StatCard({
     <>
       <span className="eyebrow flex items-center gap-1 text-[9px]">
         {label}
+        {hint && (
+          <Icon
+            name="info"
+            size={10}
+            className="opacity-35 transition-opacity group-hover:opacity-100"
+          />
+        )}
         {interactive && (
           <Icon
             name="chevron-right"
             size={10}
-            className="opacity-0 transition-opacity group-hover:opacity-100"
+            className="ml-auto opacity-0 transition-opacity group-hover:opacity-100"
           />
         )}
       </span>
@@ -348,24 +366,26 @@ export function StatCard({
         {value}
         {unit && <span className="ml-0.5 text-[11px] font-medium">{unit}</span>}
       </span>
-      {bar ? (
+      {/* A bar and a caption are not alternatives — the bar shows the value's
+          position, the caption says what position is good. The fill card needs
+          both, and dropping one left the only percentage on the row unexplained. */}
+      {bar && (
         <span className="mt-2.5 block">
           <Bar value={bar.value} tone={bar.tone} height={5} />
         </span>
-      ) : (
-        <span className="mt-1.5 block text-[10px] text-[var(--color-ink-3)]">{foot}</span>
       )}
+      {foot && <span className="mt-1.5 block text-[10px] text-[var(--color-ink-3)]">{foot}</span>}
     </>
   );
 
   const shell = cn(
-    'card flex min-w-0 flex-col justify-between px-3 py-2.5 text-left',
-    interactive && 'group transition-colors hover:border-[var(--color-ink-3)]',
+    'card group flex min-w-0 flex-col justify-between px-3 py-2.5 text-left',
+    interactive && 'transition-colors hover:border-[var(--color-ink-3)]',
   );
 
   if (to) {
     return (
-      <Link to={to} className={shell} aria-label={actionLabel}>
+      <Link to={to} className={shell} aria-label={actionLabel} title={hint}>
         {body}
       </Link>
     );
@@ -373,13 +393,17 @@ export function StatCard({
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={shell} aria-label={actionLabel}>
+      <button type="button" onClick={onClick} className={shell} aria-label={actionLabel} title={hint}>
         {body}
       </button>
     );
   }
 
-  return <div className={shell}>{body}</div>;
+  return (
+    <div className={shell} title={hint}>
+      {body}
+    </div>
+  );
 }
 
 /** The "↑4 vs 1h ago" line under a stat. */
@@ -521,55 +545,442 @@ export function Segmented<T extends string>({
    shared padding and the sortable-header affordance.
 --------------------------------------------------------------------------- */
 
+/**
+ * A column header's definition.
+ *
+ * `what` is the number and its unit, `good` is how to read it. Where a column
+ * holds a fixed vocabulary, `values` glosses each one — a reader meeting
+ * "Flooded" for the first time should not have to guess whether it involves
+ * water.
+ */
+export interface ColumnHelpSpec {
+  what: ReactNode;
+  good?: ReactNode;
+  values?: { label: string; gloss: string }[];
+}
+
+export function ColumnHelp({ title, spec }: { title: string; spec: ColumnHelpSpec }) {
+  return (
+    <Tooltip
+      help
+      width={290}
+      content={
+        <>
+          <TipTitle>{title}</TipTitle>
+          <TipBody>{spec.what}</TipBody>
+          {spec.good && (
+            <p className="mt-1.5 text-[10px] leading-relaxed text-[var(--color-ink-2)]">
+              {spec.good}
+            </p>
+          )}
+          {spec.values && (
+            <ul className="mt-2 flex flex-col gap-1 border-t border-[var(--color-line-soft)] pt-1.5">
+              {spec.values.map((v) => (
+                <li key={v.label} className="text-[9.5px] leading-snug text-[var(--color-ink-2)]">
+                  <span className="font-semibold text-[var(--color-ink)]">{v.label}</span> —{' '}
+                  {v.gloss}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      }
+    >
+      <span className="inline-flex text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]">
+        <Icon name="info" size={10} />
+      </span>
+    </Tooltip>
+  );
+}
+
 export function Th({
   children,
   className,
   align = 'left',
   sortable = false,
   width,
+  onSort,
+  active = false,
+  dir = 'desc',
+  help,
 }: {
-  children: ReactNode;
+  /** Omitted for spacer columns that exist only to hold an action. */
+  children?: ReactNode;
   className?: string;
   align?: 'left' | 'right' | 'center';
   sortable?: boolean;
   width?: number;
+  /** Makes the header a real sort control. */
+  onSort?: () => void;
+  active?: boolean;
+  dir?: 'asc' | 'desc';
+  /** Explains a column whose meaning is not literal. */
+  help?: ColumnHelpSpec;
 }) {
+  const label = (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      {children}
+      <SortGlyph active={active} dir={dir} />
+    </span>
+  );
+
   return (
     <th
       scope="col"
       style={width ? { width } : undefined}
+      aria-sort={onSort ? (active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
       className={cn(
         'eyebrow border-b border-[var(--color-line)] px-3 py-2.5 align-middle font-semibold',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         align === 'left' && 'text-left',
+        active && 'text-[var(--color-ink)]',
         className,
       )}
     >
-      {sortable ? (
-        <span className="inline-flex items-center gap-1">
-          {children}
-          <SortGlyph />
-        </span>
-      ) : (
-        children
-      )}
+      {/* No `flex-row-reverse` on right-aligned columns: it put the help icon
+          to the *left* of the label, so "Bikes / Open" read as "ⓘ Bikes". The
+          th's own text-align already pushes this inline-flex box to the right;
+          the order inside it should stay label-then-icon everywhere. */}
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        {onSort ? (
+          /* `text-transform: inherit` because Tailwind's Preflight resets
+             buttons to `none`, which quietly stripped `.eyebrow`'s uppercase
+             from every sortable header — so "Score" sat title-case beside an
+             uppercase "YOUR CALL" in the same row, across every table. */
+          <button
+            type="button"
+            onClick={onSort}
+            className="cursor-pointer [text-transform:inherit] hover:text-[var(--color-ink)]"
+          >
+            {label}
+          </button>
+        ) : sortable ? (
+          label
+        ) : (
+          children
+        )}
+        {help && <ColumnHelp title={typeof children === 'string' ? children : ''} spec={help} />}
+      </span>
     </th>
   );
 }
 
-function SortGlyph() {
+/** Both carets at rest; the engaged direction goes solid when a column sorts. */
+function SortGlyph({ active = false, dir = 'desc' }: { active?: boolean; dir?: 'asc' | 'desc' }) {
   return (
     <svg
       aria-hidden="true"
       width="8"
       height="10"
       viewBox="0 0 8 10"
-      className="text-[var(--color-ink-3)]"
+      className={active ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-3)]'}
     >
-      <path d="M4 0 7 3.4H1z" fill="currentColor" opacity="0.55" />
-      <path d="M4 10 1 6.6h6z" fill="currentColor" opacity="0.55" />
+      <path d="M4 0 7 3.4H1z" fill="currentColor" opacity={active && dir === 'asc' ? 1 : 0.4} />
+      <path d="M4 10 1 6.6h6z" fill="currentColor" opacity={active && dir === 'desc' ? 1 : 0.4} />
     </svg>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Banner — feed trouble, stated on the board rather than replacing it.
+--------------------------------------------------------------------------- */
+
+export function Banner({
+  tone,
+  icon,
+  children,
+}: {
+  tone: Tone;
+  icon: IconName;
+  children: ReactNode;
+}) {
+  const t = TONE[tone];
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-[11px] leading-relaxed"
+      style={{ backgroundColor: t.bg, borderColor: t.line, color: t.fg }}
+    >
+      <Icon name={icon} size={14} className="mt-px shrink-0" />
+      <span className="min-w-0">{children}</span>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Finding — the sentence at the top of a screen that says what the numbers
+   below it mean.
+
+   A console full of counts makes the reader do the interpreting. This states
+   the conclusion in words, then shows the figures it was drawn from, so the
+   page leads with a claim it is willing to defend rather than a wall of data.
+--------------------------------------------------------------------------- */
+
+export function Finding({
+  tone = 'ink',
+  icon,
+  headline,
+  detail,
+  stats,
+}: {
+  tone?: Tone;
+  icon: IconName;
+  headline: ReactNode;
+  detail?: ReactNode;
+  stats?: { label: string; value: ReactNode; tone?: Tone }[];
+}) {
+  const t = TONE[tone];
+
+  return (
+    <section
+      className="rounded-lg border bg-[var(--color-surface)]"
+      style={{ borderColor: t.line, borderLeft: `3px solid ${t.fg}` }}
+    >
+      <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
+        <span
+          aria-hidden="true"
+          className="mt-px flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md"
+          style={{ backgroundColor: t.bg, color: t.fg }}
+        >
+          <Icon name={icon} size={14} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[13px] leading-snug font-semibold text-[var(--color-ink)]">
+            {linkifyNode(headline)}
+          </p>
+          {detail && (
+            <p className="mt-1 max-w-[100ch] text-[11px] leading-relaxed text-[var(--color-ink-2)]">
+              {/* The callouts are where the jargon is densest, so the prose
+                  teaches itself rather than relying on anyone remembering to
+                  wrap each term by hand. */}
+              {linkifyNode(detail)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {stats && stats.length > 0 && (
+        <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[var(--color-line-soft)] px-4 py-2.5">
+          {stats.map((s) => (
+            <div key={s.label} className="flex items-baseline gap-1.5">
+              <dd
+                className="num text-[13px] font-semibold"
+                style={{ color: TONE[s.tone ?? 'ink'].fg }}
+              >
+                {s.value}
+              </dd>
+              <dt className="text-[10px] text-[var(--color-ink-3)]">{s.label}</dt>
+            </div>
+          ))}
+        </dl>
+      )}
+    </section>
+  );
+}
+
+/**
+ * "You arrived here from somewhere else, and here is the way back."
+ *
+ * Shown on every deep-link arrival. Following a link into a thousand-row table
+ * and losing your place is worse than not having the link, so no destination
+ * is allowed to be a one-way trip.
+ */
+export function ArrivalBanner({
+  from,
+  back,
+  detail,
+  onDismiss,
+}: {
+  from: string;
+  back: string | null;
+  detail?: ReactNode;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-3 py-2 text-[11px]"
+      style={{ backgroundColor: TONE.flood.bg, borderColor: TONE.flood.line }}
+    >
+      <Icon name="chevron-left" size={13} style={{ color: TONE.flood.fg }} />
+      <span className="text-[var(--color-ink-2)]">
+        Arrived from <span className="font-semibold text-[var(--color-ink)]">{from}</span>
+        {detail && <> — {detail}</>}
+      </span>
+      <span className="ml-auto flex items-center gap-3">
+        {back && (
+          <Link
+            to={back}
+            className="font-medium underline underline-offset-2"
+            style={{ color: TONE.flood.fg }}
+          >
+            Back to {from}
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="cursor-pointer text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
+        >
+          <Icon name="x" size={13} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** Marks a panel the live feed cannot supply, so nobody reads it as measured. */
+export function FixtureNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="mt-2 flex items-start gap-1.5 text-[9.5px] leading-snug text-[var(--color-ink-3)] italic">
+      <Icon name="info" size={11} className="mt-px shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Pagination.
+
+   Numbered pages rather than an endless scroll: a dispatch board is a list of
+   discrete work, and "page 6 of 84" is a position you can hold in your head
+   and come back to. The window keeps first and last always reachable and
+   collapses the middle, so the control never changes width as you move.
+--------------------------------------------------------------------------- */
+
+/** Page indices to render, with 'gap' marking a collapsed run. 0-indexed. */
+export function pageWindow(page: number, count: number): (number | 'gap')[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i);
+
+  const out: (number | 'gap')[] = [0];
+  const start = Math.max(1, page - 1);
+  const end = Math.min(count - 2, page + 1);
+
+  if (start > 1) out.push('gap');
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < count - 2) out.push('gap');
+  out.push(count - 1);
+
+  return out;
+}
+
+export function Pagination({
+  page,
+  pageCount,
+  onChange,
+}: {
+  page: number;
+  pageCount: number;
+  onChange: (page: number) => void;
+}) {
+  if (pageCount <= 1) return null;
+
+  const step = (delta: number) => onChange(Math.min(pageCount - 1, Math.max(0, page + delta)));
+
+  return (
+    <nav aria-label="Queue pages" className="flex items-center gap-1">
+      <PageButton
+        onClick={() => step(-1)}
+        disabled={page === 0}
+        ariaLabel="Previous page"
+        wide
+      >
+        <Icon name="chevron-left" size={12} />
+        Prev
+      </PageButton>
+
+      {pageWindow(page, pageCount).map((item, i) =>
+        item === 'gap' ? (
+          <span key={`gap${i}`} aria-hidden="true" className="num px-1 text-[10px] text-[var(--color-ink-3)]">
+            …
+          </span>
+        ) : (
+          <PageButton
+            key={item}
+            onClick={() => onChange(item)}
+            active={item === page}
+            ariaLabel={`Page ${item + 1}`}
+            current={item === page}
+          >
+            {item + 1}
+          </PageButton>
+        ),
+      )}
+
+      <PageButton
+        onClick={() => step(1)}
+        disabled={page >= pageCount - 1}
+        ariaLabel="Next page"
+        wide
+      >
+        Next
+        <Icon name="chevron-right" size={12} />
+      </PageButton>
+    </nav>
+  );
+}
+
+function PageButton({
+  children,
+  onClick,
+  disabled = false,
+  active = false,
+  current = false,
+  wide = false,
+  ariaLabel,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  current?: boolean;
+  wide?: boolean;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      aria-current={current ? 'page' : undefined}
+      className={cn(
+        'num inline-flex h-[24px] items-center justify-center gap-1 rounded-md border text-[10px] transition-colors',
+        wide ? 'px-2' : 'min-w-[24px] px-1.5',
+        active
+          ? 'border-[var(--color-ink)] bg-[var(--color-ink)] font-semibold text-white'
+          : 'border-transparent text-[var(--color-ink-2)] hover:border-[var(--color-line)] hover:bg-[var(--color-sunken)] hover:text-[var(--color-ink)]',
+        disabled && 'cursor-default opacity-35 hover:border-transparent hover:bg-transparent',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Skeleton — a static tint while the first poll lands. No spinners, no pulse:
+   a board that throbs reads as a board that is changing.
+--------------------------------------------------------------------------- */
+
+export function SkeletonRows({ rows = 8, cols = 7 }: { rows?: number; cols?: number }) {
+  return (
+    <tbody>
+      {Array.from({ length: rows }, (_, r) => (
+        <tr key={r} className="border-b border-[var(--color-line-soft)] last:border-b-0">
+          {Array.from({ length: cols }, (_, c) => (
+            <td key={c} className="px-3 py-3">
+              <span
+                className="block h-[10px] rounded-full bg-[var(--color-line-soft)]"
+                style={{ width: c === 1 ? '70%' : c === 0 ? 30 : '55%' }}
+              />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
   );
 }
 

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { StationDrawerHost } from './StationDrawerHost';
+import { RunWatcher } from './RunWatcher';
 import { cn } from '../lib/cn';
 
 /**
@@ -31,14 +32,19 @@ export function AppShell({ children }: { children: ReactNode }) {
           openable from a map pin, a zone row, a ticket or an offender list, and
           it should look and behave identically from all of them. */}
       <StationDrawerHost />
+      <RunWatcher />
     </div>
   );
 }
 
 /**
- * The bar at the top of every screen: title, one line of context, and the
- * screen's actions. Sits on the canvas rather than in a card — it labels the
- * page, it is not part of the data.
+ * The masthead of a screen: what this page is, and one sentence on what it is
+ * for. Sits on the canvas rather than in a card — it names the page, it is not
+ * part of the data.
+ *
+ * Deliberately the largest type in the app. Everything below it is
+ * instrumentation set at 9–12px, so the console needs one unambiguous "you are
+ * here" before the density starts.
  */
 export function PageHeader({
   title,
@@ -54,17 +60,21 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        'flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-[var(--color-line)] px-4 py-3',
+        'flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-[var(--color-line)] px-4 pt-4 pb-3.5',
         className,
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-[14px] leading-tight font-semibold text-[var(--color-ink)]">{title}</h1>
+        <h1 className="text-[21px] leading-none font-semibold tracking-[-0.015em] text-[var(--color-ink)]">
+          {title}
+        </h1>
         {subtitle && (
-          <p className="mt-0.5 text-[11px] leading-tight text-[var(--color-ink-2)]">{subtitle}</p>
+          <p className="mt-1.5 max-w-[92ch] text-[12px] leading-relaxed text-[var(--color-ink-2)]">
+            {subtitle}
+          </p>
         )}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 pt-0.5">{actions}</div>}
     </header>
   );
 }

@@ -1,5 +1,10 @@
+import type { StationRow, StatusLabel } from '../data/stationRow';
 import type { IconName } from '../ui/Icon';
 import type { Tone } from '../ui/tone';
+
+// The row shape now lives in `src/data/stationRow.ts` so the live adapter and
+// these fixtures can both produce it. Re-exported so existing imports hold.
+export type { StationRow, StatusLabel };
 
 /**
  * Fixtures for the console.
@@ -50,28 +55,6 @@ export const CONSOLE_CLOCK = '14:02';
 /* ---------------------------------------------------------------------------
    Priority queue.
 --------------------------------------------------------------------------- */
-
-export type StatusLabel = 'Empty' | 'Flooded' | 'Full' | 'Low' | 'Healthy' | 'Stale';
-
-export interface StationRow {
-  id: string;
-  name: string;
-  borough: string;
-  docks: number;
-  /** Null when the station is unverified and its counts cannot be trusted. */
-  bikes: number | null;
-  score: number | null;
-  status: StatusLabel;
-  updated: string;
-  /** 0–1, or null for unknown. Drives the fill bar. */
-  fill: number | null;
-  fillTone: Tone;
-  /** The caption under the fill bar. Absent on rows the design leaves bare. */
-  fillLabel?: string;
-  /** Shown instead of the borough sub-line on unverified rows. */
-  warning?: string;
-  stationNumber?: string;
-}
 
 export const STATIONS: StationRow[] = [
   {
@@ -258,8 +241,10 @@ export const QUEUE_STATS = {
   floodedDelta: -11,
   stale: 3,
   fill: 0.61,
-  scoreThreshold: 55,
-  criticalThreshold: 70,
+  // scoreThreshold / criticalThreshold used to live here as literal 55 and 70.
+  // Nothing read them, and they were a second copy of numbers the model owns —
+  // exactly the drift that let the badge ramp turn amber at 40 while the legend
+  // promised 55. Import from `model/score` if a mock ever needs them.
   page: 1,
   pageCount: 114,
 };
@@ -356,11 +341,20 @@ export const SCORE_NOTE =
    Fleet.
 --------------------------------------------------------------------------- */
 
-export type TruckState = 'en-route' | 'loading' | 'idle';
+/**
+ * Where a vehicle is in its run.
+ *
+ * `on-site` is separate from `loading` deliberately: a truck that has arrived
+ * and is working is not the same as one filling up at a depot, and a
+ * coordinator must not count that station as solved until the crew leaves.
+ */
+export type TruckState = 'en-route' | 'loading' | 'on-site' | 'idle';
 
 export interface Truck {
   id: string;
   state: TruckState;
+  /** Home base, so dispatch runs can be rolled up per depot. */
+  depot: string;
   /** Sub-line on the queue rail. */
   where: string;
   when?: string;
@@ -368,11 +362,31 @@ export interface Truck {
   capacity: number;
   active?: string;
   eta?: string;
+  /**
+   * Where the vehicle is right now. Invented, like the rest of the fleet — the
+   * public feed carries no vehicles — but real coordinates, because "8 minutes
+   * away" computed from a depot *name* would be a fabricated number wearing a
+   * precise costume. With a position it is arithmetic against the station's own
+   * lat/lon, and wrong only in the way every travel estimate is wrong.
+   */
+  lat: number;
+  lon: number;
+  /**
+   * Minutes until this truck can accept a *new* job — not until its current
+   * leg ends.
+   *
+   * Declared rather than derived. A truck 6 minutes from its stop is not free
+   * in 6 minutes; it still has to unload. Deriving that would mean inventing a
+   * service-time model and presenting it as a measurement, so the number is
+   * stated outright as fixture and the panel says so.
+   */
+  freeInMin: number;
 }
 
 export const TRUCKS: Truck[] = [
   {
     id: '#4',
+    depot: 'E 18 St',
     state: 'en-route',
     where: '→ Columbus Ave & W 72',
     when: 'ETA 6 min',
@@ -380,32 +394,131 @@ export const TRUCKS: Truck[] = [
     capacity: 48,
     active: 'W 72 St & Columbus Ave',
     eta: 'ETA 6 min',
+    lat: 40.778,
+    lon: -73.98,
+    freeInMin: 18,
   },
   {
     id: '#7',
+    depot: 'E 18 St',
     state: 'loading',
     where: 'Depot · 1 Ave & E 18',
     when: 'Departs in ~12 min',
     load: 18,
     capacity: 48,
+    lat: 40.734,
+    lon: -73.98,
+    freeInMin: 35,
   },
-  { id: '#1', state: 'en-route', where: 'Broadway & W 36 St', load: 31, capacity: 48 },
-  { id: '#3', state: 'en-route', where: 'Atlantic Ave & 4 Ave', load: 12, capacity: 48 },
-  { id: '#8', state: 'en-route', where: 'Queens Blvd & 46 St', load: 22, capacity: 48 },
-  { id: '#2', state: 'idle', where: 'Depot · Greenpoint', load: 0, capacity: 48 },
-  { id: '#5', state: 'idle', where: 'Depot · Sunset Park', load: 0, capacity: 48 },
-  { id: '#6', state: 'idle', where: 'Depot · Mott Haven', load: 0, capacity: 48 },
+  {
+    id: '#1',
+    depot: 'E 18 St',
+    state: 'on-site',
+    where: 'Broadway & W 36 St',
+    when: 'unloading, ~4 min left',
+    load: 31,
+    capacity: 48,
+    lat: 40.752,
+    lon: -73.988,
+    freeInMin: 4,
+  },
+  {
+    id: '#3',
+    depot: 'Sunset Park',
+    state: 'en-route',
+    where: 'Atlantic Ave & 4 Ave',
+    load: 12,
+    capacity: 48,
+    lat: 40.684,
+    lon: -73.978,
+    freeInMin: 22,
+  },
+  {
+    id: '#8',
+    depot: 'Queens Blvd',
+    state: 'en-route',
+    where: 'Queens Blvd & 46 St',
+    load: 22,
+    capacity: 48,
+    lat: 40.744,
+    lon: -73.921,
+    freeInMin: 27,
+  },
+  {
+    id: '#2',
+    depot: 'Greenpoint',
+    state: 'idle',
+    where: 'Depot · Greenpoint',
+    load: 0,
+    capacity: 48,
+    lat: 40.73,
+    lon: -73.954,
+    freeInMin: 0,
+  },
+  {
+    // Idle but not empty — came back from a collect run with bikes still on
+    // board. Without one of these the fleet had three identical empty idles and
+    // "an idle truck carrying 26 is a different asset from an idle truck
+    // carrying none" was a true statement about a case the data never produced.
+    id: '#5',
+    depot: 'Sunset Park',
+    state: 'idle',
+    where: 'Depot · Sunset Park',
+    load: 26,
+    capacity: 48,
+    lat: 40.645,
+    lon: -74.01,
+    freeInMin: 0,
+  },
+  {
+    id: '#6',
+    depot: 'Mott Haven',
+    state: 'idle',
+    where: 'Depot · Mott Haven',
+    load: 0,
+    capacity: 48,
+    lat: 40.809,
+    lon: -73.923,
+    freeInMin: 0,
+  },
 ];
 
 export const TRUCK_STATE_LABEL: Record<TruckState, string> = {
   'en-route': 'En Route',
   loading: 'Loading',
+  'on-site': 'On Site',
   idle: 'Idle',
+};
+
+/**
+ * Can this vehicle take a job, and at what cost?
+ *
+ * The meaning of a state is only half of what a coordinator needs; the other
+ * half is what choosing it does to them. "En Route" is not a status so much as
+ * a warning that re-tasking abandons something already in progress.
+ */
+export const TRUCK_STATE_AVAILABILITY: Record<TruckState, string> = {
+  idle: 'Free now — can leave immediately.',
+  loading: 'Free shortly — finishing a load first.',
+  'en-route': 'Only by re-tasking — you would abandon its current job.',
+  'on-site': 'Only by re-tasking — the crew is mid-job at a station.',
+};
+
+/** The order a truck moves through them. */
+export const TRUCK_STATE_CYCLE: TruckState[] = ['idle', 'loading', 'en-route', 'on-site'];
+
+/** One line each, for the legend on Fleet Operations. */
+export const TRUCK_STATE_MEANING: Record<TruckState, string> = {
+  idle: 'Parked at a depot with no job. Driver available, vehicle doing nothing.',
+  loading: 'Moving bikes on or off — taking stock at a depot, or collecting from a station that is too full. Not travelling.',
+  'en-route': 'Driving between two points, carrying bikes to a drop-off or heading to a pickup.',
+  'on-site': 'Arrived and working the station. The job is not finished, so the station does not count as solved yet.',
 };
 
 export const TRUCK_STATE_TONE: Record<TruckState, Tone> = {
   'en-route': 'ok',
   loading: 'warn',
+  'on-site': 'flood',
   idle: 'mute',
 };
 

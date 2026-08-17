@@ -171,6 +171,24 @@ export const NOT_REPORTING_AFTER_MINUTES = STALENESS_MAX_MINUTES;
 /** Score at or above which a station is counted as needing a truck. */
 export const NEEDS_TRUCK_THRESHOLD = 55;
 
+/**
+ * Score at or above which a station is called critical rather than merely
+ * urgent — "send one now" as opposed to "it qualifies".
+ *
+ * This existed for a while as a bare `70` written twice: once in the badge
+ * colour ramp and once in the Score Guide's band labels. Two literals, no name,
+ * and absent from a method sheet whose subtitle promises every constant behind
+ * the score. An undisclosed constant inside a transparency feature costs more
+ * than the constant is worth, so it is named here and read from both places.
+ *
+ * Deliberately independent of {@link NEEDS_TRUCK_THRESHOLD} rather than derived
+ * as `threshold + 15`. They answer different questions — one is "is this worth
+ * a trip", the other is "does this jump the queue" — and tying them together
+ * would silently move the critical band every time somebody tuned the dispatch
+ * line. Both are guesses; they should be free to be wrong separately.
+ */
+export const CRITICAL_THRESHOLD = 70;
+
 // ---------------------------------------------------------------------------
 // Breakdown shape
 // ---------------------------------------------------------------------------
