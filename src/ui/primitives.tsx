@@ -71,6 +71,7 @@ export function Button({
   type = 'button',
   title,
   ariaLabel,
+  notBuilt,
 }: {
   children?: ReactNode;
   icon?: IconName;
@@ -81,17 +82,36 @@ export function Button({
   type?: 'button' | 'submit';
   title?: string;
   ariaLabel?: string;
+  /**
+   * What this control *would* do, for the ones that do nothing yet.
+   *
+   * A button with no handler is worse than no button at all: an empty screen
+   * reads as "not built", but a control that swallows a click reads as broken,
+   * and the doubt spreads backwards — once somebody clicks Diagnostic Run and
+   * gets silence, they start wondering whether the score was real either.
+   *
+   * Setting this disables the control and explains itself on hover, which
+   * turns fourteen apparent faults into fourteen stated scope decisions. The
+   * phrasing lives here so every stub says the same thing in the same voice
+   * rather than drifting across fourteen call sites.
+   */
+  notBuilt?: string;
 }) {
+  const dead = Boolean(notBuilt);
+
   return (
     <button
       type={type}
-      onClick={onClick}
-      title={title}
+      onClick={dead ? undefined : onClick}
+      disabled={dead}
+      title={dead ? `Not in this prototype. ${notBuilt}` : title}
       aria-label={ariaLabel}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors',
         size === 'sm' ? 'px-2.5 py-1 text-[11px]' : 'px-2.5 py-1.5 text-[12px]',
-        BUTTON_VARIANT[variant],
+        dead
+          ? 'cursor-not-allowed border border-dashed border-[var(--color-line)] bg-transparent text-[var(--color-ink-3)]'
+          : BUTTON_VARIANT[variant],
         className,
       )}
     >

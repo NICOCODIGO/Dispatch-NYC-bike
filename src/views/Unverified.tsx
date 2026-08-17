@@ -85,8 +85,12 @@ export function Unverified() {
         }
         actions={
           <>
-            <Button icon="radio-tower">Ping Network Nodes</Button>
-            <Button variant="dark">Diagnostic Run</Button>
+            <Button icon="radio-tower" notBuilt="Would poke each silent station's modem. Needs operator hardware access.">
+              Ping Network Nodes
+            </Button>
+            <Button variant="dark" notBuilt="Would sweep every silent station and report why each went quiet.">
+              Diagnostic Run
+            </Button>
           </>
         }
       />
@@ -236,7 +240,11 @@ export function Unverified() {
                             Dispatch Mech
                           </Button>
                         ) : (
-                          <Button size="sm" icon="power">
+                          <Button
+                            size="sm"
+                            icon="power"
+                            notBuilt="Would power-cycle this station remotely. Needs operator hardware access."
+                          >
                             Reset Modem
                           </Button>
                         )}

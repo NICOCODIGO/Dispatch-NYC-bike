@@ -60,7 +60,9 @@ export function ZoneView() {
                 {avgFill === null ? '–' : `${Math.round(avgFill * 100)}%`}
               </span>
             </span>
-            <Button variant="dark">Assign Zone Truck</Button>
+            <Button variant="dark" notBuilt="Would dedicate a truck to this zone for the shift.">
+              Assign Zone Truck
+            </Button>
           </>
         }
       />
@@ -276,7 +278,11 @@ function ClusterPanel({ title, detail }: { title: string; detail: string }) {
       ))}
 
       <div className="absolute top-3 right-3">
-        <Button size="sm" icon="maximize">
+        <Button
+          size="sm"
+          icon="maximize"
+          notBuilt="Use Map View and filter — a zone-scoped map is not built."
+        >
           Full Zone Map
         </Button>
       </div>

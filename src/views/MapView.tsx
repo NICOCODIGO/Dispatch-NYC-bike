@@ -463,7 +463,12 @@ function StationPopup({
         <span>{free === null ? '—' : `${free} slots free`}</span>
       </div>
 
-      <Button variant="dark" icon="truck" className="mt-3 w-full">
+      <Button
+        variant="dark"
+        icon="truck"
+        className="mt-3 w-full"
+        notBuilt="Dispatching lives in the station drawer — click a dot on the map."
+      >
         Dispatch Truck
       </Button>
       <Link

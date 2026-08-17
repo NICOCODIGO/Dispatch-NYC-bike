@@ -54,7 +54,9 @@ export function Mechanics() {
                 { value: 'history', label: 'History' },
               ]}
             />
-            <Button variant="dark">Create Work Order</Button>
+            <Button variant="dark" notBuilt="Would open a blank work order not tied to a station.">
+              Create Work Order
+            </Button>
           </>
         }
       />
@@ -432,13 +434,15 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
 
         {ticket.assignment.kind === 'pending' ? (
           <span className="flex items-center gap-2">
-            <Button size="sm">Defer</Button>
-            <Button size="sm" variant="dark">
+            <Button size="sm" notBuilt="Would push this ticket to the next shift.">
+              Defer
+            </Button>
+            <Button size="sm" variant="dark" notBuilt="Would put this ticket on a named mechanic.">
               Assign Now
             </Button>
           </span>
         ) : (
-          <Button size="sm" variant="green">
+          <Button size="sm" variant="green" notBuilt="Would close the ticket and log who fixed it.">
             Complete Task
           </Button>
         )}

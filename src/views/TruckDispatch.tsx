@@ -74,12 +74,21 @@ export function TruckDispatch() {
   const summary = useDispatch((s) => s.summary);
   const demand = rebalanceDemand(lane);
 
-  const capacityPerRun = TRUCKS.reduce((sum, t) => sum + t.capacity, 0);
-  const activeCapacity = TRUCKS.filter((t) => stateOf(t) !== 'idle').reduce(
-    (sum, t) => sum + t.capacity,
-    0,
-  );
-  const runs = activeCapacity > 0 ? Math.ceil(demand.relocatable / activeCapacity) : 0;
+  /**
+   * Outstanding work, in single-vehicle loads.
+   *
+   * This replaced a figure labelled "truck runs" that divided the workload by
+   * the capacity of the *entire active fleet* — so it counted how many times
+   * all five trucks together would fill and empty. At 3,605 bikes that printed
+   * "16 truck runs" for what is really 16 × 5 = 80 individual trips. Nobody
+   * reads "16 truck runs" as eighty.
+   *
+   * Dividing by one vehicle instead gives a number that means what it says and
+   * does not silently change when a truck goes on or off shift — the work is
+   * the work regardless of who is available to do it.
+   */
+  const truckCapacity = Math.max(...TRUCKS.map((t) => t.capacity));
+  const truckloads = truckCapacity > 0 ? Math.ceil(demand.relocatable / truckCapacity) : 0;
 
   /**
    * Availability, and a candidate job for everyone who can take one.
@@ -107,8 +116,14 @@ export function TruckDispatch() {
         subtitle={`${TRUCKS.length} trucks against ${(summary?.needsTruck ?? 0).toLocaleString('en-US')} stations that need one. What is outstanding, who is moving, and what the idle trucks could be doing.`}
         actions={
           <>
-            <Button icon="file-text">Fleet Status Report</Button>
-            <Button variant="dark" icon="plus">
+            <Button icon="file-text" notBuilt="Would export the shift's fleet state as a PDF.">
+              Fleet Status Report
+            </Button>
+            <Button
+              variant="dark"
+              icon="plus"
+              notBuilt="Multi-stop routing is not modelled — assign one station at a time from a truck card."
+            >
               Assign New Route
             </Button>
           </>
@@ -119,9 +134,8 @@ export function TruckDispatch() {
         <WorkloadFinding
           demand={demand}
           idle={idle}
-          runs={runs}
-          activeCapacity={activeCapacity}
-          capacityPerRun={capacityPerRun}
+          truckloads={truckloads}
+          truckCapacity={truckCapacity}
           needsTruck={summary?.needsTruck ?? 0}
         />
 
@@ -185,16 +199,15 @@ function effectiveState(truck: Truck, assignment?: TruckAssignment): TruckState 
 function WorkloadFinding({
   demand,
   idle,
-  runs,
-  activeCapacity,
-  capacityPerRun,
+  truckloads,
+  truckCapacity,
   needsTruck,
 }: {
   demand: ReturnType<typeof rebalanceDemand>;
   idle: number;
-  runs: number;
-  activeCapacity: number;
-  capacityPerRun: number;
+  /** Outstanding work in single-vehicle loads. Independent of fleet size. */
+  truckloads: number;
+  truckCapacity: number;
   needsTruck: number;
 }) {
   if (needsTruck === 0) {
@@ -209,22 +222,33 @@ function WorkloadFinding({
   }
 
   // Idle trucks while work is outstanding is the whole story of this screen.
-  const tone: Tone = idle > 0 && needsTruck > 0 ? 'empty' : runs > 2 ? 'warn' : 'ok';
+  const tone: Tone = idle > 0 && needsTruck > 0 ? 'empty' : truckloads > 20 ? 'warn' : 'ok';
 
   return (
     <Finding
       icon="truck"
       tone={tone}
+      /*
+       * The headline used to read "3 of 8 trucks are idle while 769 stations
+       * need one", which invites exactly the wrong arithmetic: *one* refers
+       * back to trucks, so a reader lands on 769 trucks and concludes the fleet
+       * is short by 761. It compared a count of vehicles against a count of
+       * places, which are not the same kind of thing, and never said that one
+       * truckload serves several stations.
+       *
+       * Both halves are now stated in truckloads — a unit that means the same
+       * thing on either side of the sentence.
+       */
       headline={
         idle > 0 ? (
           <>
-            {idle} of {TRUCKS.length} trucks are idle while {needsTruck.toLocaleString('en-US')}{' '}
-            stations need one.
+            {idle} of {TRUCKS.length} trucks are parked while{' '}
+            {truckloads.toLocaleString('en-US')} truckloads of rebalancing sit outstanding.
           </>
         ) : (
           <>
-            The whole fleet is committed against {needsTruck.toLocaleString('en-US')} stations
-            needing a truck.
+            The whole fleet is out, against {truckloads.toLocaleString('en-US')} truckloads of
+            rebalancing.
           </>
         )
       }
@@ -235,19 +259,30 @@ function WorkloadFinding({
           {demand.surplus.toLocaleString('en-US')} need collecting from {demand.stationsOver} that
           have no room left. {demand.relocatable.toLocaleString('en-US')} of those can be handled
           by moving bikes between stations; the rest has to come from or go to a depot. At{' '}
-          {activeCapacity} bikes of active truck capacity that is {runs} full run
-          {runs === 1 ? '' : 's'}
+          {truckCapacity} bikes a vehicle that is {truckloads.toLocaleString('en-US')} loads
           {idle > 0 && (
-            <> — bringing the idle trucks in would raise capacity to {capacityPerRun}</>
+            <>
+              , and {idle * truckCapacity} bikes of carrying capacity is sitting at a depot right
+              now
+            </>
           )}
-          .
+          .{' '}
+          <strong className="font-semibold">
+            This is not one truck per station — a single load is emptied across several stops
+          </strong>
+          , which is why {needsTruck.toLocaleString('en-US')} stations needing attention does not
+          mean {needsTruck.toLocaleString('en-US')} trips.
         </>
       }
       stats={[
         { label: 'to deliver', value: demand.deficit.toLocaleString('en-US'), tone: 'empty' },
         { label: 'to collect', value: demand.surplus.toLocaleString('en-US'), tone: 'flood' },
         { label: 'relocatable', value: demand.relocatable.toLocaleString('en-US') },
-        { label: 'truck runs', value: runs, tone: runs > 2 ? 'warn' : 'ok' },
+        {
+          label: 'truckloads',
+          value: truckloads.toLocaleString('en-US'),
+          tone: truckloads > 20 ? 'warn' : 'ok',
+        },
         { label: 'idle', value: idle, tone: idle > 0 ? 'empty' : 'ok' },
       ]}
     />
@@ -504,7 +539,9 @@ function ExpandedTruck({ truck }: { truck: Truck }) {
             <span className="font-semibold text-[var(--color-ink)]">Active:</span> {truck.active}
           </p>
         )}
-        <Button size="sm">Options</Button>
+        <Button size="sm" notBuilt="Would re-task, recall, or take this truck off shift.">
+          Options
+        </Button>
       </div>
     </Card>
   );

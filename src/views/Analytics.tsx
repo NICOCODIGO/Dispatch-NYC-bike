@@ -64,7 +64,11 @@ export function Analytics() {
               onChange={setRange}
               options={[{ value: 'session', label: window ? `This session · ${window}` : 'This session' }]}
             />
-            <Button variant="dark" icon="download">
+            <Button
+              variant="dark"
+              icon="download"
+              notBuilt="Would download the session's polls as CSV."
+            >
               Export
             </Button>
           </>
