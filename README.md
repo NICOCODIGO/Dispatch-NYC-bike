@@ -246,11 +246,6 @@ glance. Uptown drains, downtown clogs.
 
 React, TypeScript, Vite, Tailwind, Zustand and Mapbox GL.
 
-The scoring model sits in one file with no UI code in it
-([`src/model/score.ts`](src/model/score.ts)), so a background job can import
-exactly the same logic the screen uses. That's on purpose: the history and the
-live board can never disagree about what a score means.
-
 ---
 
 <p align="center">
