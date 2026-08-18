@@ -1,4 +1,4 @@
-# Dispatch
+<img src="docs/screenshots/banner.jpg" alt="Dispatch — New York bikeshare rebalancing" width="880" />
 
 [![Live demo](https://img.shields.io/badge/demo-online-brightgreen)](https://github.com/NICOCODIGO/Dispatch-NYC-bike)
 
