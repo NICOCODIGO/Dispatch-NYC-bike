@@ -1,13 +1,12 @@
 # Dispatch
 
+[![Live demo](https://img.shields.io/badge/demo-online-brightgreen)](https://github.com/NICOCODIGO/Dispatch-NYC-bike)
+
+<a href="https://github.com/NICOCODIGO/Dispatch-NYC-bike" target="_blank" rel="noopener">
+  <img src="docs/screenshots/queue.png" alt="Priority Queue — every station that needs a truck, worst first" width="880" />
+</a>
+
 **A live dashboard that reads New York's public bike-share data and answers one question: which station should a truck go to next, and should it be dropping bikes off or picking them up?**
-
-![The Priority Queue — every station that needs a truck, worst first](docs/screenshots/queue.png)
-
-> ⚠️ **Work in progress.** The core is real and running on live data. Several
-> screens are still sketches, the truck fleet is simulated, and a number of
-> buttons are deliberately switched off. There's an honest breakdown of exactly
-> what's finished and what isn't in [Where this actually stands](#where-this-actually-stands).
 
 ---
 
