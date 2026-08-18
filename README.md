@@ -1,12 +1,22 @@
 <img src="docs/screenshots/banner.jpg" alt="Dispatch — New York bikeshare rebalancing" width="880" />
 
-[![Live demo](https://img.shields.io/badge/demo-online-brightgreen)](https://github.com/NICOCODIGO/Dispatch-NYC-bike)
+[![Live demo](https://img.shields.io/badge/demo-online-brightgreen)](https://city-bike-sigma.vercel.app/)
+![Live GBFS data](https://img.shields.io/badge/Live%20Data-green)
+![React](https://img.shields.io/badge/React-61DAFB?style=flat&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat&logo=vite&logoColor=white)
+![Mapbox](https://img.shields.io/badge/Mapbox-000000?style=flat&logo=mapbox&logoColor=white)
 
-<a href="https://github.com/NICOCODIGO/Dispatch-NYC-bike" target="_blank" rel="noopener">
+<a href="https://city-bike-sigma.vercel.app/" target="_blank" rel="noopener">
   <img src="docs/screenshots/queue.png" alt="Priority Queue — every station that needs a truck, worst first" width="880" />
 </a>
 
 **A live dashboard that reads New York's public bike-share data and answers one question: which station should a truck go to next, and should it be dropping bikes off or picking them up?**
+
+> **What's real:** the GBFS pipeline, the scoring model and the ranked queue all
+> run on live data. The truck fleet is simulated — no operator publishes vehicle
+> positions, so there's nothing to read. [Exactly what's built and what isn't →](#where-this-actually-stands)
 
 ---
 
@@ -223,31 +233,6 @@ obvious at a glance: uptown drains, downtown clogs.
 
 ---
 
-## Running it
-
-```bash
-npm install
-npm run dev        # http://localhost:5173
-npm test           # 161 tests
-npm run build      # static site in dist/
-```
-
-No backend and no API key needed for the data — GBFS is public and the browser
-reads it directly.
-
-**The map is the one exception.** It needs a free Mapbox token:
-
-```bash
-cp .env.example .env
-# then add:  VITE_MAPBOX_TOKEN=pk.your_token_here
-```
-
-Without one, the map falls back to a simple schematic view and tells you why.
-If you do add a token, set URL restrictions on it in the Mapbox dashboard —
-it ships inside the built JavaScript, as any browser-based map key must.
-
----
-
 ## Built with
 
 React · TypeScript · Vite · Tailwind · Zustand · Mapbox GL
@@ -259,6 +244,11 @@ can never disagree about what a score means.
 
 ---
 
-*Station data comes from the operator's public GBFS feed. This is an independent
-project — not affiliated with, endorsed by, or connected to Citi Bike, Lyft, or
-the NYC Department of Transportation.*
+<p align="center">
+  <img src="docs/screenshots/banner-minimal.png" alt="Dispatch — New York bikeshare rebalancing" width="560" />
+</p>
+
+<p align="center">
+  <sub><em>Station data comes from the operator's public GBFS feed. This is an independent project —
+  not affiliated with, endorsed by, or connected to Citi Bike, Lyft, or the NYC Department of Transportation.</em></sub>
+</p>

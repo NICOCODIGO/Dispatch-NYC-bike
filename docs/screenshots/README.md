@@ -20,7 +20,7 @@ moves. Same lockup in three crops.
 | Filename | Where it goes |
 | --- | --- |
 | `banner.jpg` | **Repo header**, 1800×450. Wordmark, bike glyph, tagline, and the 2,506 live station coordinates as a dot map bleeding off the right edge. Displayed at 880px at the top of the main README, in place of an `# H1`. |
-| `banner-minimal.png` | Same lockup, centred, no tagline and no dot map. Swap it in if the header ever needs to be quieter. |
+| `banner-minimal.png` | **Footer sign-off**, centred above the data disclaimer at 560px. Same lockup as the header, no dot map — small enough that the wordmark closes the page without competing with `banner.jpg` at the top. Also the drop-in if the header ever needs to be quieter. |
 | `thumbnail.jpg` / `thumbnail@2x.png` | **2:1 card** — the ratio GitHub wants for Settings → General → Social preview, so shared links unfurl with the map instead of the default avatar tile. |
 
 The dot map uses real Citi Bike coordinates from
