@@ -12,58 +12,62 @@
   <img src="docs/screenshots/queue.png" alt="Priority Queue — every station that needs a truck, worst first" width="880" />
 </a>
 
-**A live dashboard that reads New York's public bike-share data and answers one question: which station should a truck go to next, and should it be dropping bikes off or picking them up?**
+**A live dashboard for New York's bike share. It reads the city's public data and
+answers one question: which station should a truck go to next, and is it dropping
+bikes off or picking them up?**
 
-> **What's real:** the GBFS pipeline, the scoring model and the ranked queue all
-> run on live data. The truck fleet is simulated — no operator publishes vehicle
-> positions, so there's nothing to read. [Exactly what's built and what isn't →](#where-this-actually-stands)
+> **What's real:** the data feed, the scoring model and the ranked queue all run
+> on live data. The truck fleet is simulated, because no operator publishes where
+> its vehicles are. [Exactly what's built and what isn't →](#where-this-actually-stands)
 
 ---
 
 ## The problem
 
-Bike-share only works if there's a bike where you are and an empty dock where
-you're going. Both fail constantly, and for the same reason: **riders decide
-where the bikes go.**
+Bike share only works if two things are true at the same time. There's a bike
+where you are, and there's an empty dock where you're going. Both fail
+constantly, for the same reason: **riders decide where the bikes end up.**
 
-Every weekday morning, thousands of people ride *out* of residential
-neighbourhoods and *into* business districts. By 10am, uptown racks are empty
-and midtown racks are jammed solid. Two different people are now stuck:
+Every weekday morning, thousands of people ride out of the neighbourhoods where
+they live and into the neighbourhoods where they work. By 10am the racks uptown
+are empty and the racks in midtown are packed solid. Two different people are
+now stuck:
 
-- You want a bike. The dock is **empty**. You walk.
-- You want to park. The dock is **full**. You ride around hunting for space,
-  and you're late.
+- You want a bike. The dock is **empty**, so you walk.
+- You want to park. The dock is **full**, so you circle the block hunting for
+  space, and you're late.
 
-The fix is unglamorous — a van drives around moving bikes from where they piled
-up to where they ran out. The industry calls it **rebalancing**.
+The fix is boring. A van drives around, picking bikes up where they piled up and
+dropping them where they ran out. The industry calls this **rebalancing**.
 
-The hard part isn't the driving. It's deciding **where to drive.** New York has
-**2,509 stations**, and on a normal afternoon somewhere between **700 and 800 of
-them** need attention at the same time. However many trucks an operator runs,
-it is never 750.
+The hard part was never the driving. It's deciding **where to drive.** New York
+has **2,509 stations**, and on a normal afternoon somewhere between **700 and
+800 of them** need attention at once. No operator has 750 trucks. Nobody has
+ever had 750 trucks.
 
-So the real job is triage: *of the 750 things going wrong, which twenty matter
-most right now?* That's the question this dashboard exists to answer.
+So the real job is triage. Of the 750 things going wrong right now, which twenty
+matter most? That's the question this dashboard exists to answer.
 
 ---
 
-## The data: what GBFS is
+## Where the data comes from
 
-Every major bike-share system in the world publishes its live status publicly,
-in a shared format called **GBFS** — the *General Bikeshare Feed Specification*.
+Every major bike share system in the world publishes its live status in public,
+in a shared format called **GBFS**, the General Bikeshare Feed Specification.
 It's the reason your maps app can show you Citi Bike docks without Citi Bike
 building anything for it.
 
-It's just a set of files on the internet, refreshed every few seconds. Anyone can
-read them. No key, no login, no permission.
+It's a set of files sitting on the internet, refreshed every few seconds. Anyone
+can read them. No key, no login, no permission.
 
 If you've ever opened the map on citibikenyc.com and tapped a station to see how
-many bikes are left — **that's this data.** Same source, same numbers, right down
-to the Site ID printed at the bottom of their popup. The difference is what gets
-done with it: their map answers *"can I get a bike here?"* for one rider. This
-one tries to answer *"where do I send the truck?"* for the whole city at once.
+many bikes are left, **that's this data.** Same source, same numbers, right down
+to the Site ID printed at the bottom of the popup. What's different is the
+question being asked. Their map answers *"can I get a bike here?"* for one rider
+on one corner. This one tries to answer *"where do I send the truck?"* for the
+whole city at once.
 
-For each station, the feed tells you roughly this:
+For each station, the feed gives you roughly this:
 
 ```json
 {
@@ -78,13 +82,13 @@ For each station, the feed tells you roughly this:
 }
 ```
 
-That's the whole thing. Multiply by 2,509.
+That's the whole thing, repeated 2,509 times.
 
-**And that's the problem.** The feed is scrupulously factual and completely
-mute on the only thing that matters. It will tell you a station has zero bikes.
-It will not tell you whether that's a crisis or a Tuesday. Nothing in it says
-*urgent*, *ignore this*, *this one has been broken for six hours*, or **go here
-first**.
+**And that's the problem.** The feed is completely factual and completely silent
+on the only thing that matters. It will tell you a station has zero bikes. It
+won't tell you whether that's an emergency or a normal Tuesday. Nothing in it
+says *urgent*, or *ignore this one*, or *this has been broken since six this
+morning*, or **go here first.**
 
 It's a spreadsheet with 2,509 rows and no sort order.
 
@@ -93,90 +97,92 @@ It's a spreadsheet with 2,509 rows and no sort order.
 ## What this app does with it
 
 Dispatch reads that feed every minute and turns each station into something a
-person can act on. The row above becomes:
+person can act on. The station in the JSON above comes out looking like this:
 
-> **88** &nbsp; **Park Ave & E 41 St** — Manhattan · 109 docks, all of them empty
+> **88** &nbsp; **Park Ave & E 41 St** · Manhattan · 109 docks, all of them empty
 > *Nobody can rent here.* → **drop 55 bikes**
 
 Same data. Now it's a decision.
 
-Four things happen to get there:
+Four things happen along the way.
 
-**1. Name the failure.** Zero bikes and zero docks are opposite emergencies that
-need opposite trucks — one needs bikes delivered, the other needs them taken
-away. The feed treats both as just numbers. The app separates them, and colours
-them differently everywhere: warm means *nobody can rent*, cool means *nobody can
-return*.
+**1. Name the failure.** A station with no bikes and a station with no free docks
+are opposite emergencies, and they need opposite trucks. One needs bikes
+delivered, the other needs bikes taken away. The feed treats both as ordinary
+numbers. The app splits them apart and colours them differently everywhere it
+shows them: warm means *nobody can rent*, cool means *nobody can return*.
 
-**2. Score how much it matters, 0 to 100.** Higher is worse. A big station
-failing strands more riders than a small one, so size counts. A reading from
-40 minutes ago is less trustworthy than one from 40 seconds ago, so freshness
-counts. A station that's been broken for hours is worse than one that just
-tipped over, so *duration* counts.
+**2. Score how bad it is, 0 to 100.** Higher is worse. Three things move the
+number. **Size**, because a big station failing strands more riders than a small
+one. **Freshness**, because a reading from 40 minutes ago deserves less trust
+than one from 40 seconds ago. **Duration**, because a station that's been empty
+for hours is in worse shape than one that just tipped over.
 
-**3. Draw a line.** At **55 or above**, the board says send a truck. Below that,
-a station is drifting but still serving people on both sides. Above **70** it's
+**3. Draw a line.** At **55 and above**, the board says send a truck. Below that,
+a station is drifting but people can still rent and return. Above **70** it's
 critical and jumps the queue.
 
-**4. Show its work.** Every score opens into a receipt showing the arithmetic —
-every number that fed in, and where each one came from. There's a "scoring
-method" page listing every constant in the model, each tagged **measured**,
+**4. Show the work.** Every score opens into a receipt: the arithmetic, every
+number that fed into it, and where each of those numbers came from. There's a
+whole page listing every constant in the model, each one tagged **measured**,
 **reasoned**, or **guess**.
 
 That last part matters more than it sounds. A dashboard that hands you a
-confident number you can't interrogate is asking to be either obeyed blindly or
-ignored. This one tells you, unprompted, that the 55 line is a guess nobody has
-validated yet — and that with ~750 stations qualifying against a fleet that can
-finish maybe sixteen truckloads a shift, the threshold isn't even the thing
-limiting you. **Capacity is.** Moving the line changes the number you report,
-not the work that gets done.
+confident number you can't check is asking to be either obeyed blindly or
+ignored completely. This one tells you up front that the 55 line is a guess
+nobody has validated yet, and that the line isn't really what's limiting you
+anyway. Around 750 stations qualify on a normal afternoon. A fleet can finish
+maybe sixteen truckloads in a shift. **Capacity is the constraint, not the
+threshold.** Moving the line changes the number you report at the end of the
+day, not the work that actually gets done.
 
 ---
 
 ## Where the data lies to you
 
-Public data always sounds cleaner than it is. Every item below is something that
-only showed up by reading the actual live numbers and comparing them to reality
-— none of it is written down in the official documentation.
+Public data always sounds cleaner than it is. Everything below turned up by
+reading the live numbers and checking them against reality. None of it is
+written down in the official documentation.
 
 - **Some stations say they last reported in 1970.** 91 of them have no real
-  timestamp. A few publish a placeholder date that's meant to mean *"never
-  reported"*, but if you take it literally it reads as decades old. Those
-  stations then shoot to the top of the list looking like emergencies when
-  really nobody has heard from them at all.
+  timestamp. A few publish a placeholder date that's meant to say *"never
+  reported"*, but read literally it comes out as decades ago. Those stations
+  then rocket to the top of the list looking like emergencies, when the truth is
+  that nobody has heard from them at all.
 
 - **Stations disagree with themselves.** 706 of the 2,509 report a bike count
   and a dock count that don't add up to the size they claim to be. A station
-  might say it holds 73 bikes, then report 11 bikes and 56 free docks — which is
-  67, not 73. So "how full is this?" gets measured against the slots actually
-  working, not the number on the label. Otherwise a station that's physically
-  packed shows up as half empty.
+  might say it holds 73 bikes, then report 11 bikes and 56 free docks. That's
+  67, not 73. So "how full is this?" gets measured against the slots that are
+  actually working, not the number on the label. Otherwise a station that's
+  physically jammed shows up as half empty.
 
-- **The feed doesn't know what a borough is.** There's no borough field at all —
-  just a few vague regions and some leftover test entries. Every station's
-  borough here is worked out from its map coordinates.
+- **The feed doesn't know what a borough is.** There's no borough field in it at
+  all, just a few vague regions and some leftover test entries. Every borough in
+  this app is worked out from the station's map coordinates.
 
 - **A truck can't fix everything.** Some stations aren't out of bikes, they're
-  *broken* — switched off, or the dock itself has failed. Driving a van full of
-  bikes there accomplishes nothing. Those get routed to a separate maintenance
-  list instead of clogging up the dispatch queue.
+  broken. Switched off, or the dock hardware itself has failed. Driving a van
+  full of bikes there accomplishes nothing, so those get routed to a separate
+  maintenance list instead of clogging up the dispatch queue.
 
 - **A dead battery still counts as a bike.** This one can't be fixed from this
-  data at all. The feed says how many e-bikes are at a station, but not how much
-  charge they have. Citi Bike's own app will tell you a station has five e-bikes
-  with 33, 16, 11, 2 and 2 miles of range left — two of those are basically
-  unusable. This dashboard counts all five as available bikes. So the board can
-  say a station is fine when a rider walking up would disagree.
+  data at all. The feed says how many e-bikes are sitting at a station, but not
+  how much charge they have. Citi Bike's own app will tell you a station has
+  five e-bikes with 33, 16, 11, 2 and 2 miles of range left, and two of those
+  are effectively unusable. This dashboard counts all five as available. So the
+  board can call a station healthy when a rider walking up to it would strongly
+  disagree.
 
 ### One more thing worth being clear about
 
 This covers **Citi Bike only.** It doesn't include private rental shops, and it
-doesn't include the dockless scooter and bike companies — those aren't in this
+doesn't include the dockless scooter and bike companies, which aren't in this
 feed and never will be. Citi Bike also doesn't serve Staten Island at all.
 
-The 2,509 stations break down as Brooklyn 894, Manhattan 681, Queens 457,
-Bronx 367, Jersey City 76, Hoboken 34 — so two of the six areas aren't even in
-New York.
+The 2,509 stations break down like this: Brooklyn 894, Manhattan 681, Queens
+457, Bronx 367, Jersey City 76, Hoboken 34. Two of those six places aren't even
+in New York.
 
 ---
 
@@ -184,13 +190,13 @@ New York.
 
 | Screen | What it does | Status |
 | --- | --- | --- |
-| **Priority Queue** | The ranked board. Every station worth a truck, worst first, with filters and a receipt behind every score. | Live data |
-| **Map View** | All 2,509 stations on real geography, coloured by urgency or by fill. | Live data |
-| **Scoring method** | Every constant in the model, tagged by how much it's actually worth trusting. | Live data |
-| **Fleet Operations** | Trucks grouped by when each frees up, each matched to a suggested job. | Real logic, invented trucks |
-| **Dispatch History** | Did the trips we sent actually fix anything? | Works, but resets on reload |
-| **Unverified / Maintenance** | Silent stations and mechanically broken ones. | Partly built |
-| **Analytics / Zones** | — | Barely started |
+| **Priority Queue** | The ranked board. Every station worth sending a truck to, worst first, with filters, search, and a receipt behind every score. | Live data |
+| **Map View** | All 2,509 stations on real geography, coloured by how urgent they are or by how full they are. | Live data |
+| **Scoring method** | Every constant in the model, tagged by how much it's worth trusting. | Live data |
+| **Fleet Operations** | Trucks grouped by when each one frees up, each matched to a job worth doing. | Real logic, invented trucks |
+| **Dispatch History** | Did the trips we sent actually fix anything? | Works, resets on reload |
+| **Unverified / Maintenance** | Stations that have gone quiet, and ones that are mechanically broken. | Partly built |
+| **Analytics / Zones** | Placeholder screens. | Barely started |
 
 ---
 
@@ -199,48 +205,51 @@ New York.
 ![All 2,509 stations on the map, coloured by urgency](docs/screenshots/map.jpg)
 
 Every station Citi Bike runs, live. Red is critical, amber needs a truck, green
-is fine, grey isn't installed yet. Dot size is how many docks the station has, so
-a big failure looks big. Click any one of them to open its receipt.
+is fine, grey isn't installed yet. The size of each dot is how many docks the
+station has, so a big failure looks big. Click any dot to open that station's
+receipt.
 
-You can also flip the colouring to show *which way* each station is failing —
-warm for out of bikes, cool for out of docks. Do that and the daily tide is
-obvious at a glance: uptown drains, downtown clogs.
+You can also flip the colours to show *which way* a station is failing: warm for
+out of bikes, cool for out of docks. Do that and the daily tide is obvious at a
+glance. Uptown drains, downtown clogs.
 
 ---
 
 ## Where this actually stands
 
-**Real and working:**
-- Live GBFS polling, all 2,509 stations, refreshed every minute
-- The full scoring model, with 161 automated tests pinning its arithmetic
+**Real and working**
+- Live polling of the public feed, all 2,509 stations, refreshed every minute
+- The full scoring model, with 161 automated tests holding its arithmetic in
+  place
 - The ranked queue, filters, search, and the score receipts
 - The map, on real coordinates
 - Composing and sending a dispatch, then measuring whether the station recovered
 
-**Simulated:**
-- **The trucks.** There are 8 of them with positions, loads and schedules, and
-  all of it is invented — the public feed contains no vehicles, because no
-  operator publishes them. The *matching logic* is real; the vehicles it matches
+**Simulated**
+- **The trucks.** There are 8 of them, with positions, loads and schedules, and
+  all of it is invented. The public feed contains no vehicles at all, because no
+  operator publishes them. The matching logic is real. The vehicles it matches
   are not.
 
-**Not built yet:**
-- Analytics and Zones are stubs
-- Nothing persists — dispositions, assignments and dispatch history all reset
-  when you reload
+**Not built yet**
+- Analytics and Zones are placeholders
+- Nothing is saved. Dispositions, assignments and dispatch history all reset
+  when you reload the page.
 - 14 buttons across the app are **deliberately disabled**, each with a tooltip
-  saying what it would have done. They're switched off rather than left silently
-  broken, because a button that does nothing makes you doubt the parts that work.
+  explaining what it would have done. They're switched off rather than left
+  quietly broken, because a button that does nothing makes you doubt the parts
+  that work.
 
 ---
 
 ## Built with
 
-React · TypeScript · Vite · Tailwind · Zustand · Mapbox GL
+React, TypeScript, Vite, Tailwind, Zustand and Mapbox GL.
 
-The scoring model lives in one file with no UI dependencies
-([`src/model/score.ts`](src/model/score.ts)), so a scheduled background job can
-import the exact same logic. That's deliberate: the history and the live board
-can never disagree about what a score means.
+The scoring model sits in one file with no UI code in it
+([`src/model/score.ts`](src/model/score.ts)), so a background job can import
+exactly the same logic the screen uses. That's on purpose: the history and the
+live board can never disagree about what a score means.
 
 ---
 
@@ -249,6 +258,6 @@ can never disagree about what a score means.
 </p>
 
 <p align="center">
-  <sub><em>Station data comes from the operator's public GBFS feed. This is an independent project —
+  <sub><em>Station data comes from the operator's public GBFS feed. This is an independent project,
   not affiliated with, endorsed by, or connected to Citi Bike, Lyft, or the NYC Department of Transportation.</em></sub>
 </p>
