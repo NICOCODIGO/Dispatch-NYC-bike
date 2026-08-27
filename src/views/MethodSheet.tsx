@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../ui/Icon';
-import { Button, TonePill } from '../ui/primitives';
-import { TipBody, TipTitle, Tooltip } from '../ui/Tooltip';
-import { TONE, type Tone } from '../ui/tone';
-import {
-  CONSTANT_GROUPS,
-  PROVENANCE_LABEL,
-  PROVENANCE_MEANING,
-  SCORING_CONSTANTS,
-  type Provenance,
-} from '../content/constants';
+import { Button } from '../ui/primitives';
+import { ProvenancePill } from '../ui/ProvenancePill';
+import { TONE } from '../ui/tone';
+import { CONSTANT_GROUPS, SCORING_CONSTANTS } from '../content/constants';
 import { NEEDS_TRUCK_THRESHOLD } from '../model/score';
 import { useDispatch } from '../store/useDispatch';
 import { rebalanceDemand } from '../data/insights';
@@ -28,11 +22,6 @@ import { TRUCKS } from '../mock/data';
  * difference between an opinion and a decision.
  */
 
-const PROVENANCE_TONE: Record<Provenance, Tone> = {
-  measured: 'ok',
-  reasoned: 'flood',
-  guess: 'warn',
-};
 
 /**
  * Bounds for the preview slider, clamped to where moving it actually changes
@@ -270,10 +259,10 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
               >
                 Apply
               </button>
-              <p className="text-[9.5px] leading-snug text-[var(--color-ink-3)]">
+              <p className="text-[10px] leading-snug text-[var(--color-ink-3)]">
                 Not wired up. The live board ranks on {NEEDS_TRUCK_THRESHOLD} whatever this slider
                 says. Changing it for real means editing{' '}
-                <code className="num text-[9px]">src/model/score.ts</code>, which the scheduled
+                <code className="num text-[10px]">src/model/score.ts</code>, which the scheduled
                 worker imports too — so the console and the worker can never disagree about what
                 urgent means.
               </p>
@@ -286,7 +275,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
 
             return (
               <section key={group.key} className="mt-4">
-                <h3 className="eyebrow text-[9px]">{group.label}</h3>
+                <h3 className="eyebrow text-[10px]">{group.label}</h3>
                 <p className="mt-0.5 text-[10px] text-[var(--color-ink-3)]">{group.note}</p>
 
                 <dl className="mt-2">
@@ -300,33 +289,19 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
                           <span className="text-[11.5px] font-semibold text-[var(--color-ink)]">
                             {c.label}
                           </span>
-                          <Tooltip
-                            help
-                            width={250}
-                            content={
-                              <>
-                                <TipTitle>{PROVENANCE_LABEL[c.provenance]}</TipTitle>
-                                <TipBody>{PROVENANCE_MEANING[c.provenance]}</TipBody>
-                              </>
-                            }
-                          >
-                            <TonePill
-                              label={PROVENANCE_LABEL[c.provenance]}
-                              tone={PROVENANCE_TONE[c.provenance]}
-                            />
-                          </Tooltip>
+                          <ProvenancePill provenance={c.provenance} />
                         </span>
                         <span className="mt-1 block text-[10px] leading-relaxed text-[var(--color-ink-2)]">
                           {c.why}
                         </span>
-                        <span className="num mt-0.5 block text-[9px] text-[var(--color-ink-3)]">
+                        <span className="num mt-0.5 block text-[10px] text-[var(--color-ink-3)]">
                           {c.key}
                         </span>
                       </dt>
                       <dd className="num self-start text-right text-[13px] font-semibold whitespace-nowrap text-[var(--color-ink)]">
                         {c.value}
                         {c.unit && (
-                          <span className="ml-1 text-[9px] font-normal text-[var(--color-ink-3)]">
+                          <span className="ml-1 text-[10px] font-normal text-[var(--color-ink-3)]">
                             {c.unit}
                           </span>
                         )}

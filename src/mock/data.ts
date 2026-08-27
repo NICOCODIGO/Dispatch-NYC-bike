@@ -1,6 +1,7 @@
 import type { StationRow, StatusLabel } from '../data/stationRow';
-import type { IconName } from '../ui/Icon';
 import type { Tone } from '../ui/tone';
+import type { WorkOrder } from '../model/workOrder';
+import type { Staff } from '../model/roster';
 
 // The row shape now lives in `src/data/stationRow.ts` so the live adapter and
 // these fixtures can both produce it. Re-exported so existing imports hold.
@@ -600,58 +601,86 @@ export const OUTAGE_FREQUENCY = '0.04%';
    Maintenance.
 --------------------------------------------------------------------------- */
 
-export interface Ticket {
-  id: string;
-  title: string;
-  severity: 'CRITICAL' | 'MEDIUM';
-  tone: Tone;
-  icon: IconName;
-  where: string;
-  reported: string;
-  fault: string;
-  /** Rendered as inline code inside the fault text. */
-  faultCode?: string;
-  /** Links the ticket to the station it is about. */
-  stationId?: string;
-  assignment:
-    | { kind: 'pending'; label: string }
-    | { kind: 'assigned'; who: string; status: string };
+/**
+ * Seed work orders.
+ *
+ * Opened relative to load rather than at fixed times. The old fixtures carried
+ * `reported: '13:45'`, which meant the maintenance screen could print an hour
+ * but never compute an age — and a work order whose age is a rendered string is
+ * a card pretending to be a ticket. Anchoring to load time means the SLA clock
+ * on these actually runs while the tab is open: the dock jam crosses its
+ * four-hour target during a long session, and the screen notices.
+ */
+const OPENED = Date.now();
+
+export const WORK_ORDERS: WorkOrder[] = [
+  {
+    id: 'wo-dock-14',
+    type: 'dock-repair',
+    target: { stationId: '442', stationName: 'Grand Army Plaza', borough: 'Brooklyn' },
+    priority: 88,
+    status: 'open',
+    assignee: null,
+    openedAt: OPENED - 197 * 60_000,
+    closedAt: null,
+    detail:
+      'Solenoid failure in dock locking mechanism. System error code {code}. Multiple user reports confirmed via app help center.',
+    faultCode: 'E-14-B',
+  },
+  {
+    id: 'wo-solar',
+    type: 'station-power',
+    target: { stationId: '5116', stationName: 'Kent Ave & N 7 St', borough: 'Brooklyn' },
+    priority: 61,
+    status: 'assigned',
+    assignee: 'mark-t',
+    openedAt: OPENED - 110 * 60_000,
+    closedAt: null,
+    detail:
+      'Site battery below 15% and still falling. Solar panel obstruction or hardware degradation suspected. Station goes off the feed entirely if it flattens.',
+  },
+];
+
+/**
+ * The field roster.
+ *
+ * Replaces a two-person `MECHANICS` array whose `status` was a hand-written
+ * sentence, sitting beside `MECHANICS_ON_SHIFT = { active: 2, total: 5 }` that
+ * disagreed with the length of the array next to it. Both are gone: who is on
+ * comes from the shift clock, and what they are doing comes from the work
+ * orders that point at them.
+ *
+ * Eleven people over three shifts, weighted toward AM and PM because that is
+ * where the demand is — the night shift is a skeleton that mostly repositions
+ * for the morning. Invented, and labelled `Simulated` wherever it surfaces.
+ */
+export const ROSTER: Staff[] = [
+  // AM — the heavy shift.
+  { id: 'mark-t', name: 'Mark T.', role: 'field-mechanic', shift: 'am', depot: 'E 18 St' },
+  { id: 'sarah-w', name: 'Sarah W.', role: 'field-mechanic', shift: 'am', depot: 'Sunset Park' },
+  { id: 'devon-r', name: 'Devon R.', role: 'rebalance-driver', shift: 'am', depot: 'E 18 St', vehicleId: '#4' },
+  { id: 'ana-l', name: 'Ana L.', role: 'rebalance-driver', shift: 'am', depot: 'Sunset Park', vehicleId: '#7' },
+  { id: 'priya-n', name: 'Priya N.', role: 'swap-tech', shift: 'am', depot: 'E 18 St' },
+  { id: 'chris-b', name: 'Chris B.', role: 'dispatcher', shift: 'am', depot: 'E 18 St' },
+
+  // PM.
+  { id: 'jordan-k', name: 'Jordan K.', role: 'rebalance-driver', shift: 'pm', depot: 'E 18 St', vehicleId: '#2' },
+  { id: 'lena-m', name: 'Lena M.', role: 'field-mechanic', shift: 'pm', depot: 'Sunset Park' },
+  { id: 'omar-s', name: 'Omar S.', role: 'swap-tech', shift: 'pm', depot: 'Sunset Park' },
+
+  // Night — repositioning for the morning, plus whoever keeps the depot moving.
+  { id: 'ray-c', name: 'Ray C.', role: 'rebalance-driver', shift: 'night', depot: 'E 18 St', vehicleId: '#5' },
+  { id: 'tess-o', name: 'Tess O.', role: 'depot-mechanic', shift: 'night', depot: 'E 18 St' },
+];
+
+export function staffById(id: string | null): Staff | null {
+  if (!id) return null;
+  return ROSTER.find((p) => p.id === id) ?? null;
 }
 
-export const TICKETS: Ticket[] = [
-  {
-    id: 'dock-14',
-    title: 'Dock #14 Mechanical Jam',
-    severity: 'CRITICAL',
-    tone: 'empty',
-    icon: 'plug-zap',
-    where: 'Grand Army Plaza · Station #442 · Brooklyn',
-    reported: '13:45',
-    fault: 'Solenoid failure in dock locking mechanism. System error code {code}. Multiple user reports confirmed via app help center.',
-    faultCode: 'E-14-B',
-    stationId: '442',
-    assignment: { kind: 'pending', label: 'PENDING MECHANIC' },
-  },
-  {
-    id: 'solar',
-    title: 'Solar Power Deficiency',
-    severity: 'MEDIUM',
-    tone: 'warn',
-    icon: 'battery-low',
-    where: 'Kent Ave & N 7 St · Station #5116 · Brooklyn',
-    reported: '10:12',
-    fault: 'Battery level dropping below 15% threshold. Solar panel obstruction or hardware degradation suspected. Site at risk of going offline within 4 hours.',
-    stationId: '5116',
-    assignment: { kind: 'assigned', who: 'Mark T.', status: 'ON ROUTE' },
-  },
-];
-
-export const MECHANICS = [
-  { name: 'Mark T.', status: 'Solar Deficiency @ Brooklyn', available: false },
-  { name: 'Sarah W.', status: 'Available · Manhattan Base', available: true },
-];
-
-export const MECHANICS_ON_SHIFT = { active: 2, total: 5 };
+export function mechanicName(id: string | null): string | null {
+  return staffById(id)?.name ?? null;
+}
 
 export interface ActivityEntry {
   who: string;

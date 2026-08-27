@@ -258,7 +258,7 @@ export function DispatchComposer({
           </div>
 
           <label className="mt-4 block">
-            <span className="eyebrow text-[9px]">Assign to</span>
+            <span className="eyebrow text-[10px]">Assign to</span>
             <select
               value={truckId}
               onChange={(e) => setTruckId(e.target.value)}
@@ -282,7 +282,7 @@ export function DispatchComposer({
           <Cost truck={TRUCKS.find((t) => t.id === truckId)} existing={existing} row={row} />
 
           <div className="mt-3.5">
-            <span className="eyebrow text-[9px]">Message</span>
+            <span className="eyebrow text-[10px]">Message</span>
             <textarea
               readOnly
               value={message}
@@ -314,7 +314,7 @@ export function DispatchComposer({
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-[var(--color-line)] bg-[var(--color-sunken)] px-4 py-3">
-          <p className="text-[9.5px] leading-snug text-[var(--color-ink-3)] italic">
+          <p className="text-[10px] leading-snug text-[var(--color-ink-3)] italic">
             Fleet is a fixture — no vehicle is really notified.
           </p>
           <span className="flex items-center gap-2">

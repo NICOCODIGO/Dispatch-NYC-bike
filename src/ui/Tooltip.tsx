@@ -127,7 +127,7 @@ export function TipBody({ children }: { children: ReactNode }) {
  */
 export function TipAction({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-2 border-t border-[var(--color-line-soft)] pt-1.5 text-[9.5px] font-medium text-[var(--color-ink-3)]">
+    <p className="mt-2 border-t border-[var(--color-line-soft)] pt-1.5 text-[10px] font-medium text-[var(--color-ink-3)]">
       {children}
     </p>
   );

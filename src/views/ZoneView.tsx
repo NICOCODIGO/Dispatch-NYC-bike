@@ -103,8 +103,8 @@ export function ZoneView() {
 
         <Card className="mt-3.5 overflow-hidden">
           <div className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-3">
-            <h2 className="eyebrow text-[9px]">Ranked priority: {zone.name} zone</h2>
-            <span className="num inline-flex items-center gap-1.5 text-[9px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
+            <h2 className="eyebrow text-[10px]">Ranked priority: {zone.name} zone</h2>
+            <span className="num inline-flex items-center gap-1.5 text-[10px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
               <span
                 aria-hidden="true"
                 className="h-[5px] w-[5px] rounded-full"
@@ -205,7 +205,7 @@ export function ZoneView() {
           <div className="border-t border-[var(--color-line)] px-4 py-3 text-center">
             <button
               type="button"
-              className="eyebrow text-[9px] hover:text-[var(--color-ink)]"
+              className="eyebrow text-[10px] hover:text-[var(--color-ink)]"
             >
               View all {zone.stations} {zone.name} stations
             </button>

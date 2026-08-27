@@ -8,6 +8,7 @@ import { TruckDispatch } from './views/TruckDispatch';
 import { DispatchHistory } from './views/DispatchHistory';
 import { Unverified } from './views/Unverified';
 import { Mechanics } from './views/Mechanics';
+import { Shift } from './views/Shift';
 import { Analytics } from './views/Analytics';
 import { ZoneView } from './views/ZoneView';
 
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/history" element={<DispatchHistory />} />
         <Route path="/unverified" element={<Unverified />} />
         <Route path="/mechanics" element={<Mechanics />} />
+        <Route path="/shift" element={<Shift />} />
         <Route path="/analytics" element={<Analytics />} />
         <Route path="/zone/:slug" element={<ZoneView />} />
         <Route path="*" element={<Navigate to="/" replace />} />

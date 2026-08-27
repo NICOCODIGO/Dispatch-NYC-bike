@@ -455,7 +455,7 @@ function BoroughPressure({ scored }: { scored: ReturnType<typeof useDispatch.get
       </table>
 
       <div className="border-t border-[var(--color-line)] px-4 py-2.5 text-center">
-        <Link to="/zone/manhattan" className="eyebrow text-[9px] hover:text-[var(--color-ink)]">
+        <Link to="/zone/manhattan" className="eyebrow text-[10px] hover:text-[var(--color-ink)]">
           Open a zone for station-level detail
         </Link>
       </div>

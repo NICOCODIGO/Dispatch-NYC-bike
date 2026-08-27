@@ -1,5 +1,31 @@
 import type { ColumnHelpSpec } from '../ui/primitives';
+import type { Tone } from '../ui/tone';
 import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD, STALENESS_MAX_MINUTES } from '../model/score';
+
+/**
+ * The four urgency bands, defined once.
+ *
+ * They lived twice: a `SCORE_GUIDE` array in the Priority Queue's rail and the
+ * `values` list on `score` below, both hand-writing the same four bands off the
+ * same two constants. That is precisely the drift the rail card's own comment
+ * warned about — "a legend that is maintained separately from the thing it
+ * explains will eventually describe a different product" — reintroduced one
+ * file over. The rail card is gone; its content is the Score column's ⓘ, which
+ * was already saying the same thing to anyone who hovered it.
+ *
+ * `tone` is here because the bands are color-coded on the board, and a key that
+ * does not carry the colors is a key to something else.
+ */
+export const SCORE_BANDS: { label: string; gloss: string; tone: Tone }[] = [
+  { label: `${CRITICAL_THRESHOLD}–100`, gloss: 'critical — send a truck now', tone: 'empty' },
+  {
+    label: `${NEEDS_TRUCK_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`,
+    gloss: 'at or above the dispatch threshold',
+    tone: 'warn',
+  },
+  { label: `0–${NEEDS_TRUCK_THRESHOLD - 1}`, gloss: 'drifting — still serving riders', tone: 'ok' },
+  { label: '?', gloss: `silent over ${STALENESS_MAX_MINUTES} min — not scored`, tone: 'mute' },
+];
 
 /**
  * Definitions for every column whose header is not self-explanatory.
@@ -14,16 +40,8 @@ import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD, STALENESS_MAX_MINUTES } from
 export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
   score: {
     what: `Urgency from 0 to 100. Higher is worse — it combines how the station is failing, how many riders it serves, and how fresh the reading is.`,
-    good: `At or above ${NEEDS_TRUCK_THRESHOLD} the board says send a truck. Below that a station is drifting but still serving riders.`,
-    values: [
-      { label: `${CRITICAL_THRESHOLD}–100`, gloss: 'critical — send a truck now' },
-      {
-        label: `${NEEDS_TRUCK_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`,
-        gloss: 'at or above the dispatch threshold',
-      },
-      { label: `0–${NEEDS_TRUCK_THRESHOLD - 1}`, gloss: 'drifting, still usable' },
-      { label: '?', gloss: 'not scored — the station is silent' },
-    ],
+    good: `At or above ${NEEDS_TRUCK_THRESHOLD} the board says send a truck. Below that a station is drifting but still serving riders. The badge deepens as a score climbs inside its band, so the worst of the reds read as worse.`,
+    values: SCORE_BANDS,
   },
 
   bikesOpen: {

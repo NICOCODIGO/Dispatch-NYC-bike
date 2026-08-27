@@ -252,6 +252,38 @@ describe('queue filtering', () => {
     expect(out.map((s) => s.station.name)).toEqual(['Alpha St', 'Bravo Ave']);
   });
 
+  // The Borough header used to sort by 'category' — failure severity — which is
+  // the one thing it does not say. Grouping by borough is the point of the
+  // column, and worst-first inside each group is what makes the grouping useful.
+  it('sorts by borough, worst-first within each one', () => {
+    const boroughs = triage(
+      score([
+        station({ name: 'Queens empty', bikes: 0, docks: 40, borough: 'Queens' }),
+        station({ name: 'Bronx full', bikes: 40, docks: 0, borough: 'Bronx' }),
+        station({ name: 'Bronx empty', bikes: 0, docks: 40, borough: 'Bronx' }),
+        station({ name: 'Manhattan empty', bikes: 0, docks: 40, borough: 'Manhattan' }),
+      ]),
+    );
+
+    const asc = applyFilters(boroughs, { ...base, sortKey: 'borough', sortDir: 'asc' });
+    expect(asc.map((s) => s.station.borough)).toEqual([
+      'Bronx',
+      'Bronx',
+      'Manhattan',
+      'Queens',
+    ]);
+    // Empty outranks full, so the tie inside the Bronx breaks on urgency.
+    expect(asc.slice(0, 2).map((s) => s.station.name)).toEqual(['Bronx empty', 'Bronx full']);
+
+    const desc = applyFilters(boroughs, { ...base, sortKey: 'borough', sortDir: 'desc' });
+    expect(desc.map((s) => s.station.borough)).toEqual([
+      'Queens',
+      'Manhattan',
+      'Bronx',
+      'Bronx',
+    ]);
+  });
+
   it('produces a stable order for tied scores so refresh does not shuffle rows', () => {
     const tied = triage(
       score([

@@ -39,7 +39,7 @@ export const RETRY_MAX_MS = 60_000;
  */
 export const FEED_STALE_MS = 10 * 60_000;
 
-export type SortKey = 'score' | 'name' | 'fill' | 'reported' | 'category';
+export type SortKey = 'score' | 'name' | 'borough' | 'fill' | 'reported' | 'category';
 
 export interface Filters {
   search: string;

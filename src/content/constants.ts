@@ -31,18 +31,34 @@ import { DEFAULT_ETA_MINUTES } from '../data/dispatchRun';
  * feed; "reasoned" means somebody argued for it; "guess" means exactly that.
  */
 
-export type Provenance = 'measured' | 'reasoned' | 'guess';
+/**
+ * `simulated` is a different kind of claim from the other three.
+ *
+ * Measured, reasoned and guessed all describe a *constant* — how much
+ * confidence to place in a number the model uses. Simulated describes a whole
+ * *field*: one the feed does not carry at all, which the app models so the
+ * screens that need it can exist. A guessed threshold is still about real
+ * stations. A simulated battery level is about a bike GBFS never mentioned.
+ *
+ * Kept in the same vocabulary rather than given its own, because a reader who
+ * has learned to look for these pills should find every kind of uncertainty
+ * wearing one — including the largest kind.
+ */
+export type Provenance = 'measured' | 'reasoned' | 'guess' | 'simulated';
 
 export const PROVENANCE_LABEL: Record<Provenance, string> = {
   measured: 'Measured',
   reasoned: 'Reasoned',
   guess: 'Guess',
+  simulated: 'Simulated',
 };
 
 export const PROVENANCE_MEANING: Record<Provenance, string> = {
   measured: 'Derived from the live feed rather than chosen.',
   reasoned: 'A judgement with an argument behind it, but not measured.',
   guess: 'Picked because a number was needed. The first thing to test against real outcomes.',
+  simulated:
+    'Not in the feed at all. Modelled by the app, and sized by a real count so it cannot contradict what the feed does say.',
 };
 
 export interface ScoringConstant {

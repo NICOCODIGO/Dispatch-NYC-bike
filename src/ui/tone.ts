@@ -24,20 +24,60 @@ export interface ToneSpec {
   bg: string;
   /** The hairline around a tinted badge. */
   line: string;
+  /**
+   * Text drawn *on top of* `fg` when the tone is a solid fill — the selected
+   * filter chip is the case that matters.
+   *
+   * White for every tone but one. `flood-soft` is deliberately the lightest
+   * signal in the palette: it has to stay clearly lighter than `flood` or the
+   * "nearly out of docks" / "no docks at all" step disappears, so it cannot be
+   * darkened to carry white text (that lands at 3.04:1). Dark ink on it reads
+   * at 4.9:1 and the ramp survives. Encoded here rather than decided at the
+   * call site so no future solid-fill use has to rediscover it.
+   */
+  onFg: string;
 }
 
+const WHITE = '#ffffff';
+
 export const TONE: Record<Tone, ToneSpec> = {
-  empty: { fg: 'var(--color-empty)', bg: 'var(--color-empty-bg)', line: 'var(--color-empty-line)' },
-  flood: { fg: 'var(--color-flood)', bg: 'var(--color-flood-bg)', line: 'var(--color-flood-line)' },
+  empty: {
+    fg: 'var(--color-empty)',
+    bg: 'var(--color-empty-bg)',
+    line: 'var(--color-empty-line)',
+    onFg: WHITE,
+  },
+  flood: {
+    fg: 'var(--color-flood)',
+    bg: 'var(--color-flood-bg)',
+    line: 'var(--color-flood-line)',
+    onFg: WHITE,
+  },
   'flood-soft': {
     fg: 'var(--color-flood-soft)',
     bg: 'var(--color-flood-soft-bg)',
     line: 'var(--color-flood-soft-line)',
+    onFg: 'var(--color-ink)',
   },
-  warn: { fg: 'var(--color-warn)', bg: 'var(--color-warn-bg)', line: 'var(--color-warn-line)' },
-  ok: { fg: 'var(--color-ok)', bg: 'var(--color-ok-bg)', line: 'var(--color-ok-line)' },
-  mute: { fg: 'var(--color-mute)', bg: 'var(--color-mute-bg)', line: 'var(--color-mute-line)' },
-  ink: { fg: 'var(--color-ink)', bg: 'var(--color-sunken)', line: 'var(--color-line)' },
+  warn: {
+    fg: 'var(--color-warn)',
+    bg: 'var(--color-warn-bg)',
+    line: 'var(--color-warn-line)',
+    onFg: WHITE,
+  },
+  ok: { fg: 'var(--color-ok)', bg: 'var(--color-ok-bg)', line: 'var(--color-ok-line)', onFg: WHITE },
+  mute: {
+    fg: 'var(--color-mute)',
+    bg: 'var(--color-mute-bg)',
+    line: 'var(--color-mute-line)',
+    onFg: WHITE,
+  },
+  ink: {
+    fg: 'var(--color-ink)',
+    bg: 'var(--color-sunken)',
+    line: 'var(--color-line)',
+    onFg: WHITE,
+  },
 };
 
 /**

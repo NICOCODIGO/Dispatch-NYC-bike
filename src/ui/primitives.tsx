@@ -4,6 +4,7 @@ import { Icon, type IconName } from './Icon';
 import { TipBody, TipTitle, Tooltip } from './Tooltip';
 import { linkifyNode } from '../content/definitions';
 import { TONE, toneForScore, type Tone } from './tone';
+import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
 import { cn } from '../lib/cn';
 
 /* ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ export function CardHead({
 }) {
   return (
     <div className={cn('flex items-center justify-between gap-3 px-3.5 pt-3 pb-2.5', className)}>
-      <h2 className="eyebrow text-[9px]">{title}</h2>
+      <h2 className="eyebrow text-[10px]">{title}</h2>
       {right}
     </div>
   );
@@ -192,12 +193,21 @@ export function FilterChip({
         type="button"
         onClick={onClick}
         aria-pressed={true}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[11px] font-medium text-white transition-colors"
-        style={{ backgroundColor: t.fg }}
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[11px] font-medium transition-colors"
+        style={{ backgroundColor: t.fg, color: t.onFg }}
       >
-        <span aria-hidden="true" className="h-[5px] w-[5px] rounded-full bg-white/90" />
+        {/* `currentColor` at low alpha rather than white: on the one tone whose
+            fill takes dark text, white-on-white dot and pill vanished. */}
+        <span
+          aria-hidden="true"
+          className="h-[5px] w-[5px] rounded-full opacity-90"
+          style={{ backgroundColor: 'currentColor' }}
+        />
         {label}
-        <span className="num rounded-full bg-white/20 px-1.5 py-px text-[10px] font-semibold">
+        <span
+          className="num rounded-full px-1.5 py-px text-[10px] font-semibold"
+          style={{ backgroundColor: 'color-mix(in srgb, currentColor 20%, transparent)' }}
+        >
           {count}
         </span>
       </button>
@@ -220,6 +230,31 @@ export function FilterChip({
   );
 }
 
+/**
+ * A person, where a photo would be.
+ *
+ * Lived in Maintenance until the shift screen needed one too. Moved rather than
+ * copied — two identical avatars drifting apart is how one screen ends up with
+ * a presence dot the other does not have.
+ */
+export function Avatar({ size = 22, online }: { size?: number; online?: boolean }) {
+  return (
+    <span className="relative inline-block shrink-0" style={{ width: size, height: size }}>
+      <span
+        aria-hidden="true"
+        className="block h-full w-full rounded-full bg-gradient-to-br from-[#9c8b73] to-[#5c5145]"
+      />
+      {online && (
+        <span
+          aria-hidden="true"
+          className="absolute right-0 bottom-0 h-[7px] w-[7px] rounded-full border-2 border-[var(--color-surface)]"
+          style={{ backgroundColor: TONE.ok.fg }}
+        />
+      )}
+    </span>
+  );
+}
+
 export function Dot({ tone, size = 6 }: { tone: Tone; size?: number }) {
   return (
     <span
@@ -238,6 +273,25 @@ export function Dot({ tone, size = 6 }: { tone: Tone; size?: number }) {
    claim the station was measured and found fine.
 --------------------------------------------------------------------------- */
 
+/**
+ * How far into its own band a score sits, 0–1.
+ *
+ * Within-band rather than across 0–100, because the hue already carries the
+ * band. What a reader could not see was the difference between a 71 and a 99 —
+ * both the same flat red — so the whole ramp is spent on that distinction
+ * instead of re-stating a boundary the color already draws.
+ */
+function bandDepth(score: number | null): number {
+  if (score === null) return 0;
+  const [lo, hi] =
+    score >= CRITICAL_THRESHOLD
+      ? [CRITICAL_THRESHOLD, 100]
+      : score >= NEEDS_TRUCK_THRESHOLD
+        ? [NEEDS_TRUCK_THRESHOLD, CRITICAL_THRESHOLD]
+        : [0, NEEDS_TRUCK_THRESHOLD];
+  return Math.min(1, Math.max(0, (score - lo) / (hi - lo)));
+}
+
 export function ScoreBadge({
   score,
   size = 'md',
@@ -249,6 +303,12 @@ export function ScoreBadge({
 }) {
   const tone = toneForScore(score);
   const t = TONE[tone];
+
+  // The border carries most of the ramp and the tint only a little of it: the
+  // hairline has no contrast obligation, while the fill sits behind the number
+  // and pulling it far toward the foreground would cost legibility to say
+  // something the border already said.
+  const depth = bandDepth(score);
   const box =
     size === 'sm'
       ? 'h-[24px] min-w-[28px] text-[11px] rounded-[6px]'
@@ -263,7 +323,11 @@ export function ScoreBadge({
         box,
         className,
       )}
-      style={{ color: t.fg, backgroundColor: t.bg, borderColor: t.line }}
+      style={{
+        color: t.fg,
+        backgroundColor: `color-mix(in srgb, ${t.fg} ${(depth * 12).toFixed(1)}%, ${t.bg})`,
+        borderColor: `color-mix(in srgb, ${t.fg} ${(depth * 55).toFixed(1)}%, ${t.line})`,
+      }}
     >
       {score === null ? '?' : score}
     </span>
@@ -362,7 +426,7 @@ export function StatCard({
 
   const body = (
     <>
-      <span className="eyebrow flex items-center gap-1 text-[9px]">
+      <span className="eyebrow flex items-center gap-1 text-[10px]">
         {label}
         {hint && (
           <Icon
@@ -576,7 +640,12 @@ export function Segmented<T extends string>({
 export interface ColumnHelpSpec {
   what: ReactNode;
   good?: ReactNode;
-  values?: { label: string; gloss: string }[];
+  /**
+   * `tone` prints the label in its signal color. Only for vocabularies that are
+   * themselves colored on the board — a key drawn in ink is a key to a
+   * different table than the one on screen.
+   */
+  values?: { label: string; gloss: string; tone?: Tone }[];
 }
 
 export function ColumnHelp({ title, spec }: { title: string; spec: ColumnHelpSpec }) {
@@ -596,9 +665,14 @@ export function ColumnHelp({ title, spec }: { title: string; spec: ColumnHelpSpe
           {spec.values && (
             <ul className="mt-2 flex flex-col gap-1 border-t border-[var(--color-line-soft)] pt-1.5">
               {spec.values.map((v) => (
-                <li key={v.label} className="text-[9.5px] leading-snug text-[var(--color-ink-2)]">
-                  <span className="font-semibold text-[var(--color-ink)]">{v.label}</span> —{' '}
-                  {v.gloss}
+                <li key={v.label} className="text-[10px] leading-snug text-[var(--color-ink-2)]">
+                  <span
+                    className={cn('font-semibold', !v.tone && 'text-[var(--color-ink)]')}
+                    style={v.tone ? { color: TONE[v.tone].fg } : undefined}
+                  >
+                    {v.label}
+                  </span>{' '}
+                  — {v.gloss}
                 </li>
               ))}
             </ul>
@@ -637,6 +711,7 @@ export function Th({
   /** Explains a column whose meaning is not literal. */
   help?: ColumnHelpSpec;
 }) {
+  const headerText = typeof children === 'string' ? children : '';
   const label = (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       {children}
@@ -671,7 +746,11 @@ export function Th({
           <button
             type="button"
             onClick={onSort}
-            className="cursor-pointer [text-transform:inherit] hover:text-[var(--color-ink)]"
+            /* Names the operation in words. The caret says a column is
+               orderable; it does not say "sort" rather than "filter", and that
+               is the distinction people were actually getting wrong. */
+            title={headerText ? `Sort by ${headerText.toLowerCase()}` : 'Sort by this column'}
+            className="group/sort cursor-pointer [text-transform:inherit] hover:text-[var(--color-ink)]"
           >
             {label}
           </button>
@@ -680,13 +759,27 @@ export function Th({
         ) : (
           children
         )}
-        {help && <ColumnHelp title={typeof children === 'string' ? children : ''} spec={help} />}
+        {help && <ColumnHelp title={headerText} spec={help} />}
       </span>
     </th>
   );
 }
 
-/** Both carets at rest; the engaged direction goes solid when a column sorts. */
+/**
+ * The sort marker: one per table at rest, not one per column.
+ *
+ * It used to draw both carets on every sortable header at all times. Six of
+ * those beside six help icons is twelve glyphs in a row of short words, and a
+ * dense strip of small controls next to short labels is what a filter bar looks
+ * like — so the header row kept being read as a second, redundant copy of the
+ * filters above it. Read that way twice by people who knew the code, which is
+ * about as clear as that kind of evidence gets.
+ *
+ * Now only the column actually sorting wears a caret. The rest reveal theirs on
+ * hover, which is where you already are when you are deciding whether a header
+ * is clickable. `opacity` rather than conditional rendering, so the row does not
+ * reflow under the pointer.
+ */
 function SortGlyph({ active = false, dir = 'desc' }: { active?: boolean; dir?: 'asc' | 'desc' }) {
   return (
     <svg
@@ -694,7 +787,12 @@ function SortGlyph({ active = false, dir = 'desc' }: { active?: boolean; dir?: '
       width="8"
       height="10"
       viewBox="0 0 8 10"
-      className={active ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-3)]'}
+      className={cn(
+        'shrink-0 transition-opacity',
+        active
+          ? 'text-[var(--color-ink)] opacity-100'
+          : 'text-[var(--color-ink-3)] opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100',
+      )}
     >
       <path d="M4 0 7 3.4H1z" fill="currentColor" opacity={active && dir === 'asc' ? 1 : 0.4} />
       <path d="M4 10 1 6.6h6z" fill="currentColor" opacity={active && dir === 'desc' ? 1 : 0.4} />
@@ -854,7 +952,7 @@ export function ArrivalBanner({
 /** Marks a panel the live feed cannot supply, so nobody reads it as measured. */
 export function FixtureNote({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-2 flex items-start gap-1.5 text-[9.5px] leading-snug text-[var(--color-ink-3)] italic">
+    <p className="mt-2 flex items-start gap-1.5 text-[10px] leading-snug text-[var(--color-ink-3)] italic">
       <Icon name="info" size={11} className="mt-px shrink-0" />
       <span>{children}</span>
     </p>
@@ -1019,7 +1117,11 @@ export function Td({
     <td
       colSpan={colSpan}
       className={cn(
-        'px-3 py-2 align-middle',
+        // py-1.5, not py-2: at ~46px a row, ten rows plus chrome is most of a
+        // laptop viewport. Trimming 4px a row buys about a quarter more board
+        // per screen, which on a triage tool is the difference between seeing
+        // the problem and scrolling to find it.
+        'px-3 py-1.5 align-middle',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         className,

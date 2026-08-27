@@ -174,7 +174,7 @@ export function Term({ term, children }: { term: string; children?: ReactNode })
           <TipTitle>{term.charAt(0).toUpperCase() + term.slice(1)}</TipTitle>
           <TipBody>{def.plain}</TipBody>
           {def.mechanism && (
-            <p className="mt-1.5 border-t border-[var(--color-line-soft)] pt-1.5 text-[9.5px] leading-relaxed text-[var(--color-ink-3)]">
+            <p className="mt-1.5 border-t border-[var(--color-line-soft)] pt-1.5 text-[10px] leading-relaxed text-[var(--color-ink-3)]">
               {def.mechanism}
             </p>
           )}

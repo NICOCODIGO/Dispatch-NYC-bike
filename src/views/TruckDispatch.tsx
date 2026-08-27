@@ -142,7 +142,7 @@ export function TruckDispatch() {
         <div className="mt-3.5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0">
             <div className="mb-2.5 flex items-center justify-between gap-3">
-              <h2 className="eyebrow text-[9px]">Operational fleet ({TRUCKS.length} total)</h2>
+              <h2 className="eyebrow text-[10px]">Operational fleet ({TRUCKS.length} total)</h2>
               <div className="flex flex-wrap items-center gap-1.5">
                 {(Object.keys(TRUCK_STATE_LABEL) as TruckState[])
                   .filter((s) => (counts[s] ?? 0) > 0)
@@ -307,14 +307,14 @@ export function TruckStateChip({ state }: { state: TruckState }) {
         <>
           <TipTitle>{TRUCK_STATE_LABEL[state]}</TipTitle>
           <TipBody>{TRUCK_STATE_MEANING[state]}</TipBody>
-          <p className="mt-1.5 border-t border-[var(--color-line-soft)] pt-1.5 text-[9.5px] leading-relaxed font-medium" style={{ color: t.fg }}>
+          <p className="mt-1.5 border-t border-[var(--color-line-soft)] pt-1.5 text-[10px] leading-relaxed font-medium" style={{ color: t.fg }}>
             {TRUCK_STATE_AVAILABILITY[state]}
           </p>
         </>
       }
     >
       <span
-        className="inline-flex items-center rounded-[5px] border px-1.5 py-[2px] text-[9px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase"
+        className="inline-flex items-center rounded-[5px] border px-1.5 py-[2px] text-[10px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase"
         style={{ color: t.fg, backgroundColor: t.bg, borderColor: t.line }}
       >
         {TRUCK_STATE_LABEL[state]}
@@ -339,7 +339,7 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
       <CardHead
         title="Fleet guide"
         right={
-          <span className="num text-[8px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
+          <span className="num text-[10px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
             Idle → Loading → En route → On site → Idle
           </span>
         }
@@ -364,16 +364,16 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
               <span className="flex flex-wrap items-baseline gap-x-1.5">
                 <TruckStateChip state={s} />
                 {(counts[s] ?? 0) > 0 && (
-                  <span className="num text-[9px] text-[var(--color-ink-3)]">
+                  <span className="num text-[10px] text-[var(--color-ink-3)]">
                     {counts[s]} now
                   </span>
                 )}
               </span>
-              <span className="mt-1 block text-[9.5px] leading-snug text-[var(--color-ink-2)]">
+              <span className="mt-1 block text-[10px] leading-snug text-[var(--color-ink-2)]">
                 {TRUCK_STATE_MEANING[s]}
               </span>
               <span
-                className="mt-0.5 block text-[9px] leading-snug font-medium"
+                className="mt-0.5 block text-[10px] leading-snug font-medium"
                 style={{ color: TONE[TRUCK_STATE_TONE[s]].fg }}
               >
                 {TRUCK_STATE_AVAILABILITY[s]}
@@ -411,7 +411,7 @@ function NextUp() {
       <CardHead
         title="Unassigned — worst first"
         right={
-          <span className="num text-[9px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
+          <span className="num text-[10px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
             Live
           </span>
         }
@@ -441,7 +441,7 @@ function NextUp() {
                     <span className="block truncate text-[11.5px] font-semibold text-[var(--color-ink)]">
                       {station.name}
                     </span>
-                    <span className="block text-[9.5px] text-[var(--color-ink-3)]">
+                    <span className="block text-[10px] text-[var(--color-ink-3)]">
                       {station.borough} ·{' '}
                       <span
                         style={{
@@ -515,7 +515,7 @@ function ExpandedTruck({ truck }: { truck: Truck }) {
         </div>
 
         <div className="w-[168px] shrink-0">
-          <p className="eyebrow text-right text-[9px]">Capacity</p>
+          <p className="eyebrow text-right text-[10px]">Capacity</p>
           <div className="mt-1.5 flex items-center gap-2">
             <Bar value={truck.load / truck.capacity} tone="ok" height={5} />
             <span className="num shrink-0 text-[11px] font-semibold text-[var(--color-ink)]">
@@ -595,7 +595,7 @@ function FleetByAvailability({
           <section key={key}>
             <div className="mb-1.5 flex items-baseline gap-2">
               <span
-                className="eyebrow text-[9px]"
+                className="eyebrow text-[10px]"
                 style={{ color: key === 'committed' ? undefined : TONE[GROUP_TONE[key]].fg }}
               >
                 {AVAILABILITY_LABEL[key]}
@@ -603,7 +603,7 @@ function FleetByAvailability({
               <span className="num text-[10px] font-semibold text-[var(--color-ink)]">
                 {rows.length}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[9.5px] text-[var(--color-ink-3)]">
+              <span className="min-w-0 flex-1 truncate text-[10px] text-[var(--color-ink-3)]">
                 {AVAILABILITY_NOTE[key]}
               </span>
               {key === 'committed' && (
@@ -676,7 +676,7 @@ function MatchRow({ row, onAssign }: { row: FleetRow; onAssign: () => void }) {
         <span className="block truncate text-[11px] font-semibold text-[var(--color-ink)]">
           {job.station.station.name}
         </span>
-        <span className="block text-[9.5px] text-[var(--color-ink-3)]">
+        <span className="block text-[10px] text-[var(--color-ink-3)]">
           <span style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}>
             {drop ? 'drop' : 'collect'}{' '}
             {complete ? job.action.bikes : `${servable} of ${job.action.bikes}`}
@@ -780,7 +780,7 @@ function FocusCard() {
       <CardHead
         title={`Active focus: ${TRUCK_FOCUS.id}`}
         right={
-          <span className="num text-[9px] tracking-[0.08em] uppercase" style={{ color: TONE.ok.fg }}>
+          <span className="num text-[10px] tracking-[0.08em] uppercase" style={{ color: TONE.ok.fg }}>
             Live sync
           </span>
         }
@@ -835,7 +835,7 @@ function TimelineStep({
           className="absolute top-[14px] left-[4px] h-[calc(100%+8px)] w-px bg-[var(--color-line)]"
         />
       )}
-      <p className="eyebrow text-[9px]">{eyebrow}</p>
+      <p className="eyebrow text-[10px]">{eyebrow}</p>
       <p className="mt-1 text-[12px] font-semibold text-[var(--color-ink)]">{title}</p>
       <p className="mt-0.5 text-[11px]" style={{ color: TONE.warn.fg }}>
         {where}

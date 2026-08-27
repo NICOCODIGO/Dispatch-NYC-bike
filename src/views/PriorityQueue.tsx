@@ -12,6 +12,7 @@ import {
   CardHead,
   Dot,
   FilterChip,
+  Finding,
   Pagination,
   SearchInput,
   Select,
@@ -33,18 +34,14 @@ import { DISPOSITION_LABEL, useConsole, type Disposition } from '../state/useCon
 import { toStationRow } from '../data/adapt';
 import type { StationRow } from '../data/stationRow';
 import { BOROUGHS, type Borough } from '../data/boroughs';
-import {
-  CRITICAL_THRESHOLD,
-  NEEDS_TRUCK_THRESHOLD,
-  STALENESS_MAX_MINUTES,
-  type StationCategory,
-} from '../model/score';
+import { mechanicFault } from '../model/triage';
+import { NEEDS_TRUCK_THRESHOLD, type StationCategory } from '../model/score';
 import { applyFilters } from '../model/queue';
 import { FEED_STALE_MS, useDispatch, type SortKey } from '../store/useDispatch';
-import { formatAgo, formatClock } from '../lib/time';
+import { formatAgo, formatClock, formatReportedAge } from '../lib/time';
 import { durationIndex } from '../data/duration';
 import { useSessionHistory } from '../state/useHistory';
-import { useArrival, useScrollToFocus } from '../state/useFocus';
+import { focusHref, useArrival, useScrollToFocus } from '../state/useFocus';
 import { TRUCKS, TRUCK_STATE_LABEL, TRUCK_STATE_TONE } from '../mock/data';
 import { cn } from '../lib/cn';
 
@@ -64,10 +61,18 @@ import { cn } from '../lib/cn';
  * Rows per page.
  *
  * Sized so a page and its pager fit a 900px viewport without scrolling — the
- * board is read from the top, and a page you have to scroll to finish is a
- * page you lose your place in.
+ * board is read from the top, and a page you have to scroll to finish is a page
+ * you lose your place in.
+ *
+ * Twelve rather than the original ten because the rows are shorter now: cell
+ * padding went from `py-2` to `py-1.5`, which is about 4px a row, and two rows'
+ * worth of that is a whole extra row back. The arithmetic, on a 900px viewport:
+ * roughly 390px goes to the page header, the six stat cards, the filter strip,
+ * the table head, the footer and the gaps between them, leaving ~510px; a row
+ * is ~42px normally and ~56px when it carries both a duration line and a
+ * dispatch outcome chip.
  */
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 12;
 
 /**
  * The chip row.
@@ -84,7 +89,13 @@ const CHIPS: { key: StationCategory; label: string; tone: Tone }[] = [
 ];
 
 const COLUMNS: {
-  key: SortKey;
+  /**
+   * Omitted for a column that is read but not ordered by. Two headers sharing
+   * one key is not a shortcut — both light up as active, both carets go solid,
+   * and clicking between them toggles the direction instead of switching
+   * column, so the header ends up claiming two sort columns at once.
+   */
+  key?: SortKey;
   label: string;
   width?: number;
   align?: 'right';
@@ -93,17 +104,55 @@ const COLUMNS: {
   // Each width has to hold its own *header*, not just its data. Several were
   // sized for the numbers underneath and then wrapped their labels onto two
   // lines — "Bikes" sitting above "Open" reads as two columns, not one.
-  { key: 'score', label: 'Score', width: 74, help: 'score' },
+  //
+  // Under `table-layout: fixed` these stopped being hints and became the actual
+  // widths, so anything sized only for its data now clips its own label instead
+  // of quietly borrowing space from a neighbour. Each one below allows for the
+  // label, the sort caret (which holds its space even when transparent) and the
+  // help icon. Being generous is free: the container scrolls sideways, and on a
+  // wide screen the slack all lands in Station, which is the column that wants
+  // it.
+  { key: 'score', label: 'Score', width: 84, help: 'score' },
   { key: 'name', label: 'Station' },
-  { key: 'category', label: 'Borough', width: 92 },
-  { key: 'fill', label: 'Bikes / Open', width: 112, help: 'bikesOpen' },
+  // Readable, not orderable — and it took two passes to get here. It first
+  // sorted by 'category', i.e. by failure severity, which is the one thing the
+  // word "Borough" does not mean; that got fixed by giving it a real borough
+  // sort. The second question is the one that settles it: given the borough
+  // dropdown sitting directly above this table, what is grouping a worst-first
+  // triage queue by borough actually for? It destroys the ordering the queue
+  // exists to provide, to do a narrowing job the dropdown already does better.
+  //
+  // The 'borough' key stays in `SortKey` and in `valueFor` — it is correct, it
+  // is tested, and reinstating this is one word if a borough-first reading ever
+  // turns out to be wanted.
+  // 104, not 92: "Staten Island" is the longest borough and fixed layout will
+  // no longer widen the column to fit it.
+  { label: 'Borough', width: 104 },
+  // Counts and Fill are the same ordering — fill *is* bikes over slots — so
+  // only one of them gets to be the control.
+  { label: 'Bikes / Open', width: 118, help: 'bikesOpen' },
   { key: 'fill', label: 'Fill', width: 104, help: 'fill' },
-  { key: 'category', label: 'Status', width: 104, help: 'status' },
-  { key: 'reported', label: 'Updated', width: 96, help: 'updated' },
+  { key: 'category', label: 'Status', width: 112, help: 'status' },
+  { key: 'reported', label: 'Updated', width: 108, help: 'updated' },
 ];
+
+/** Columns whose values are words: A→Z is the useful first click, not Z→A. */
+const ALPHABETICAL: SortKey[] = ['name', 'borough'];
 
 /** Appended after the derived columns — see DispositionCell. */
 const DISPOSITION_COL_WIDTH = 124;
+
+/** Station is the one column with no declared width, so it absorbs whatever is
+ *  left over. This is the least it may be squeezed to before the table stops
+ *  shrinking and the container scrolls sideways instead. */
+const STATION_MIN_WIDTH = 200;
+
+/** Summed rather than written down, so adding a column cannot silently leave
+ *  the table too narrow for its own fixed layout. */
+const TABLE_MIN_WIDTH =
+  COLUMNS.reduce((total, c) => total + (c.width ?? 0), 0) +
+  DISPOSITION_COL_WIDTH +
+  STATION_MIN_WIDTH;
 
 export function PriorityQueue() {
   const phase = useDispatch((s) => s.phase);
@@ -121,6 +170,7 @@ export function PriorityQueue() {
   const openStationId = useConsole((s) => s.openStationId);
   const dispositions = useConsole((s) => s.dispositions);
   const runs = useConsole((s) => s.runs);
+  const dispatched = useConsole((s) => s.dispatched);
   const [showSnoozed, setShowSnoozed] = useState(false);
   const [mine, setMine] = useState<'all' | 'unhandled' | Disposition>('all');
   const [composing, setComposing] = useState<StationRow | null>(null);
@@ -227,11 +277,33 @@ export function PriorityQueue() {
     [queue, dispositions],
   );
 
+  // Mechanical faults never reach this board at all — triage.ts routes them
+  // to Maintenance before the queue ever sees them, on the reasoning that a
+  // truck full of bikes cannot fix a dead dock. Correct, but it means a
+  // station stuck for hours can sit off-screen with nothing here pointing at
+  // it. This is the one thing that surfaces that gap back onto the page
+  // everyone actually watches.
+  const unflaggedFaults = useMemo(
+    () => lanes.mechanic.filter((f) => !dispatched.includes(f.station.stationId)),
+    [lanes.mechanic, dispatched],
+  );
+  const worstFault = useMemo(
+    () =>
+      unflaggedFaults.length === 0
+        ? null
+        : unflaggedFaults.reduce((oldest, f) =>
+            (f.breakdown.staleness.ageMinutes ?? 0) > (oldest.breakdown.staleness.ageMinutes ?? 0)
+              ? f
+              : oldest,
+          ),
+    [unflaggedFaults],
+  );
+
   const sort = (key: SortKey) =>
     setFilters(
       filters.sortKey === key
         ? { sortDir: filters.sortDir === 'desc' ? 'asc' : 'desc' }
-        : { sortKey: key, sortDir: key === 'name' ? 'asc' : 'desc' },
+        : { sortKey: key, sortDir: ALPHABETICAL.includes(key) ? 'asc' : 'desc' },
     );
 
   const feedIsStale =
@@ -281,6 +353,35 @@ export function PriorityQueue() {
           </div>
         )}
 
+        {worstFault && (
+          <div className="mb-3">
+            <Finding
+              icon="wrench"
+              tone="empty"
+              headline={
+                unflaggedFaults.length === 1
+                  ? '1 station needs a mechanic, not a truck — nobody has flagged it yet.'
+                  : `${unflaggedFaults.length} stations need a mechanic, not a truck — none flagged yet.`
+              }
+              detail={
+                <>
+                  Worst is {worstFault.station.name} ({worstFault.station.borough}) —{' '}
+                  {mechanicFault(worstFault).toLowerCase()}, reported{' '}
+                  {formatReportedAge(worstFault.breakdown.staleness.ageMinutes)}. Stations like this
+                  never appear in the board below; a truck full of bikes cannot fix a dead dock.{' '}
+                  <Link
+                    to={focusHref('/mechanics', worstFault.station.stationId, 'Priority Queue', '/')}
+                    className="font-medium underline underline-offset-2"
+                    style={{ color: TONE.empty.fg }}
+                  >
+                    Open in Maintenance →
+                  </Link>
+                </>
+              }
+            />
+          </div>
+        )}
+
         <StatRow summary={summary} onClear={resetFilters} onOnly={(c) => setFilters({ categories: [c] })} />
 
         {/* `items-start` matters: grid rows stretch their children by default,
@@ -297,7 +398,16 @@ export function PriorityQueue() {
               scope it, then dispatch. The "Filter by status" eyebrow the comp
               carried is gone — five dotted chips with counts do not need
               labelling, and dropping it is what fits the row on one line. */}
-          <Card className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 xl:col-span-2">
+          {/* Column one, same as the board. It used to span both columns, which
+              put its right edge — and so the Dispatch Truck button — 240px past
+              the table it filters, out beyond the rail. A control bar wider than
+              the thing it controls reads as belonging to the page rather than to
+              the table, which is the wrong claim: every control in here narrows
+              the rows below and nothing else on the screen.
+
+              Placed explicitly rather than wrapped in a flex column, so the rail
+              can still span both rows beside it. */}
+          <Card className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 xl:col-start-1 xl:row-start-1">
             <SearchInput
               value={filters.search}
               onChange={(v) => setFilters({ search: v })}
@@ -316,7 +426,12 @@ export function PriorityQueue() {
 
             <span aria-hidden="true" className="h-[18px] w-px bg-[var(--color-line)]" />
 
+            {/* The comp's "Filter by status" eyebrow was cut to fit this row on
+                one line, and cutting it is what made the chips read as tabs —
+                five dotted counts with no verb in front of them. "Show:" is the
+                verb at a fifth of the width. */}
             <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] font-medium text-[var(--color-ink-3)]">Show:</span>
               {CHIPS.map((c) => (
                 <FilterChip
                   key={c.key}
@@ -369,30 +484,18 @@ export function PriorityQueue() {
                 <Icon name="rotate-ccw" size={11} />
                 Clear
               </button>
-              {/* Divided off from Clear, because it is not a filter.
-                  It sat inside the filter group looking like the status chips
-                  and implying two things that are both false: that Clear resets
-                  it, and that it is scoped to this view. It filters nothing —
-                  every row still renders — and it is the same network-wide
-                  constant every screen ranks on.
+              {/* "Dispatch at ≥ 55" used to sit here, opening the method sheet.
+                  It had been fought twice already — divided off from Clear,
+                  its icon changed from a funnel to a document — and still read
+                  as a setting, because both patches treated the symptom. The
+                  cause was that one control was doing two unrelated jobs: it
+                  stated a fact about how the board ranks, and it was the door
+                  to a reference document. Neither is a filter, and this row is
+                  filters.
 
-                  The label states the rule rather than the value for the same
-                  reason. "Threshold 55" is a number you have to already
-                  understand; "Dispatch at ≥ 55" can be read cold by somebody who
-                  has never opened this app before, which removes the need to
-                  explain the control at all. The icon is a document, not a
-                  funnel — the old `list-filter` glyph was actively arguing for
-                  the misreading. */}
-              <span className="h-3.5 w-px bg-[var(--color-line)]" aria-hidden="true" />
-              <button
-                type="button"
-                onClick={() => setMethod(true)}
-                title="Every constant behind the score, where it came from, and what moving it does. Network-wide, not a filter on this view."
-                className="inline-flex cursor-pointer items-center gap-1 text-[10px] whitespace-nowrap text-[var(--color-ink-2)] underline decoration-dotted underline-offset-2 hover:text-[var(--color-ink)]"
-              >
-                <Icon name="file-text" size={11} />
-                Dispatch at ≥ <span className="num">{NEEDS_TRUCK_THRESHOLD}</span>
-              </button>
+                  Both moved to the footer, where the other facts about the
+                  board live, and split apart: the threshold is now text, and
+                  the door is named after the room it opens. */}
               {/* Dispatches the worst station nobody has acted on yet — the
                   answer to "just tell me where to send the next truck". */}
               <Button
@@ -411,28 +514,49 @@ export function PriorityQueue() {
             </div>
           </Card>
 
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden xl:col-start-1 xl:row-start-2">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
+              {/* `table-fixed` stays, even though paging no longer strictly
+                  needs it.
+
+                  Under the default `table-layout: auto` the browser sizes each
+                  column from the rows currently in the DOM, so the widths are
+                  really a property of the page you happen to be on: turning to
+                  a page holding a long station name reflows the whole grid.
+                  Windowing made that violent enough to see as flashing, but it
+                  was always there, just quieter — one jump per page turn
+                  instead of one per scroll.
+
+                  Fixed layout takes the widths from the `<th>`s alone, so the
+                  grid is decided before a single row renders and holds across
+                  every page. `minWidth` keeps the columns from crushing on a
+                  narrow viewport; the container scrolls sideways instead. */}
+              <table
+                className="w-full table-fixed border-collapse text-left"
+                style={{ minWidth: TABLE_MIN_WIDTH }}
+              >
                 <caption className="sr-only">
                   Stations a truck can fix, ranked by urgency, worst first. Select a row to see how
                   its score was calculated.
                 </caption>
                 <thead>
                   <tr>
-                    {COLUMNS.map((col, i) => (
-                      <Th
-                        key={i}
-                        width={col.width}
-                        align={col.align}
-                        onSort={() => sort(col.key)}
-                        active={filters.sortKey === col.key}
-                        dir={filters.sortDir}
-                        help={col.help ? COLUMN_HELP[col.help] : undefined}
-                      >
-                        {col.label}
-                      </Th>
-                    ))}
+                    {COLUMNS.map((col) => {
+                      const key = col.key;
+                      return (
+                        <Th
+                          key={col.label}
+                          width={col.width}
+                          align={col.align}
+                          onSort={key ? () => sort(key) : undefined}
+                          active={key !== undefined && filters.sortKey === key}
+                          dir={filters.sortDir}
+                          help={col.help ? COLUMN_HELP[col.help] : undefined}
+                        >
+                          {col.label}
+                        </Th>
+                      );
+                    })}
                     <Th width={DISPOSITION_COL_WIDTH} help={COLUMN_HELP.disposition}>
                       Decision
                     </Th>
@@ -491,15 +615,42 @@ export function PriorityQueue() {
                     </button>
                   </>
                 )}
+
+                {/* The rule this board ranks on, stated as a fact among the
+                    other facts — not as a control that can be mistaken for a
+                    filter, which is what it looked like up in the strip. */}
+                <span aria-hidden="true">·</span>
+                <span>
+                  dispatch at ≥ <span className="num">{NEEDS_TRUCK_THRESHOLD}</span>
+                </span>
+
+                {/* Named after what it opens. The old trigger was labelled with
+                    the threshold, so it announced a number and delivered a
+                    document about ten of them. */}
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => setMethod(true)}
+                  title="Every constant behind the score, where it came from, and what moving it does."
+                  className="inline-flex cursor-pointer items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-[var(--color-ink)]"
+                >
+                  <Icon name="file-text" size={11} />
+                  How scoring works
+                </button>
               </p>
               <Pagination page={safePage} pageCount={pageCount} onChange={setPage} />
             </div>
           </Card>
 
-          <aside className="flex flex-col gap-3" aria-label="Fleet and score reference">
+          {/* The Score Guide card used to sit here. It was a second, hand-kept
+              copy of the bands the Score column's ⓘ already published, so it is
+              now only in the ⓘ — one list, derived from the two constants. */}
+          <aside
+            className="flex flex-col gap-3 xl:col-start-2 xl:row-start-1 xl:row-span-2"
+            aria-label="Fleet and score reference"
+          >
             <ActiveTrucks />
             <FillDistribution />
-            <ScoreGuide />
           </aside>
         </div>
       </PageBody>
@@ -616,7 +767,7 @@ function QueueRow({
       onClick={onOpen}
       data-focus-id={row.id}
       className={cn(
-        'cursor-pointer border-b border-[var(--color-line-soft)] transition-colors last:border-b-0',
+        'group cursor-pointer border-b border-[var(--color-line-soft)] transition-colors last:border-b-0',
         selected || focused ? 'bg-[var(--color-sunken)]' : 'hover:bg-[var(--color-sunken)]',
       )}
       style={
@@ -670,7 +821,7 @@ function QueueRow({
       <Td>
         <Bar value={row.fill} tone={row.fillTone} height={4} />
         {row.fillLabel && (
-          <span className="num mt-1 block text-[9px] text-[var(--color-ink-3)]">{row.fillLabel}</span>
+          <span className="num mt-1 block text-[10px] text-[var(--color-ink-3)]">{row.fillLabel}</span>
         )}
       </Td>
 
@@ -686,7 +837,7 @@ function QueueRow({
         <span className="num block text-[10px] text-[var(--color-ink-3)]">{row.updated}</span>
         {row.duration?.confident && (
           <span
-            className="num mt-1 block text-[9.5px] font-medium"
+            className="num mt-1 block text-[10px] font-medium"
             style={{ color: TONE.warn.fg }}
           >
             {row.status} {formatAgo(row.duration.minutes * 60_000)}
@@ -806,8 +957,16 @@ function OffQueueHits({
  *
  * A native select, deliberately: every other cell in this table is a derived
  * value rendered as text or a badge, so an input has to look like an input or
- * it will be read as another thing the feed decided. Styled quietly when
- * unset so several hundred empty dropdowns do not shout down the data.
+ * it will be read as another thing the feed decided.
+ *
+ * Quiet styling was not enough. A screenful of dropdowns reading "Not set" is a
+ * column of chrome saying nothing, competing with the station names for the
+ * eye — so an undecided row shows a dash and grows its control on hover.
+ *
+ * The select stays mounted and focusable underneath rather than being swapped
+ * in on hover, and the reveal keys on `focus-within` as well as `hover`. Hiding
+ * a form control behind a pointer event is how a table stops being reachable by
+ * keyboard, and this is the only cell here anyone can actually change.
  */
 function DispositionCell({ row }: { row: StationRow }) {
   const dispositions = useConsole((s) => s.dispositions);
@@ -815,28 +974,38 @@ function DispositionCell({ row }: { row: StationRow }) {
   const current = dispositions[row.id];
 
   return (
-    <select
-      value={current ?? ''}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => {
-        e.stopPropagation();
-        setDisposition(row.id, row.name, (e.target.value || null) as Disposition | null);
-      }}
-      aria-label={`Your decision for ${row.name}`}
-      className={cn(
-        'w-full cursor-pointer rounded-md border px-1.5 py-1 text-[10px] transition-colors',
-        current
-          ? 'border-[var(--color-line)] bg-[var(--color-sunken)] font-medium text-[var(--color-ink)]'
-          : 'border-dashed border-[var(--color-line)] bg-transparent text-[var(--color-ink-3)] hover:border-[var(--color-ink-3)]',
+    <span className="relative block">
+      {!current && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 flex items-center px-1.5 text-[11px] text-[var(--color-ink-3)] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+        >
+          —
+        </span>
       )}
-    >
-      <option value="">Not set</option>
-      {(Object.keys(DISPOSITION_LABEL) as Disposition[]).map((d) => (
-        <option key={d} value={d}>
-          {DISPOSITION_LABEL[d]}
-        </option>
-      ))}
-    </select>
+      <select
+        value={current ?? ''}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          e.stopPropagation();
+          setDisposition(row.id, row.name, (e.target.value || null) as Disposition | null);
+        }}
+        aria-label={`Your decision for ${row.name}`}
+        className={cn(
+          'w-full cursor-pointer rounded-md border px-1.5 py-1 text-[10px] transition-[opacity,color,border-color]',
+          current
+            ? 'border-[var(--color-line)] bg-[var(--color-sunken)] font-medium text-[var(--color-ink)]'
+            : 'border-dashed border-[var(--color-line)] bg-transparent text-[var(--color-ink-3)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:border-[var(--color-ink-3)] focus:opacity-100',
+        )}
+      >
+        <option value="">Not set</option>
+        {(Object.keys(DISPOSITION_LABEL) as Disposition[]).map((d) => (
+          <option key={d} value={d}>
+            {DISPOSITION_LABEL[d]}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
 
@@ -857,7 +1026,7 @@ function ActionHint({ row }: { row: StationRow }) {
       <Link
         to="/mechanics"
         onClick={(e) => e.stopPropagation()}
-        className="mt-1 block text-[9.5px] underline-offset-2 hover:underline"
+        className="mt-1 block text-[10px] underline-offset-2 hover:underline"
         style={{ color: TONE.empty.fg }}
       >
         no truck can fix
@@ -868,7 +1037,7 @@ function ActionHint({ row }: { row: StationRow }) {
   const drop = action.kind === 'drop';
   return (
     <span
-      className="num mt-1 block text-[9.5px]"
+      className="num mt-1 block text-[10px]"
       style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}
     >
       {drop ? 'drop' : 'collect'} ~{action.bikes}
@@ -923,12 +1092,12 @@ function ActiveTrucks() {
               {truck.where}
             </p>
             {truck.when && (
-              <p className="num mt-0.5 text-[9.5px] text-[var(--color-ink-3)]">{truck.when}</p>
+              <p className="num mt-0.5 text-[10px] text-[var(--color-ink-3)]">{truck.when}</p>
             )}
           </li>
         ))}
       </ul>
-      <p className="border-t border-[var(--color-line-soft)] px-3.5 py-2 text-[9.5px] leading-snug text-[var(--color-ink-3)] italic">
+      <p className="border-t border-[var(--color-line-soft)] px-3.5 py-2 text-[10px] leading-snug text-[var(--color-ink-3)] italic">
         Fixture — the feed carries no vehicles.
       </p>
     </Card>
@@ -975,69 +1144,3 @@ function FillDistribution() {
   );
 }
 
-/**
- * The bands, computed from the two lines rather than typed out.
- *
- * These were four hardcoded strings, which is how "55–69 Warning" came to sit
- * beside a badge ramp that actually turned amber at 40. A legend that is
- * maintained separately from the thing it explains will eventually describe a
- * different product.
- */
-const SCORE_GUIDE = [
-  {
-    range: `${CRITICAL_THRESHOLD}–100`,
-    label: 'Critical',
-    detail: 'Send truck immediately',
-    tone: 'empty' as Tone,
-  },
-  {
-    range: `${NEEDS_TRUCK_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`,
-    label: 'Warning',
-    detail: 'At or above the dispatch threshold',
-    tone: 'warn' as Tone,
-  },
-  {
-    range: `0–${NEEDS_TRUCK_THRESHOLD - 1}`,
-    label: 'Drifting',
-    detail: 'Still serving riders',
-    tone: 'ok' as Tone,
-  },
-  {
-    range: '?',
-    label: 'Unverified',
-    detail: `Stale >${STALENESS_MAX_MINUTES} min, not scored`,
-    tone: 'mute' as Tone,
-  },
-];
-
-function ScoreGuide() {
-  return (
-    <Card>
-      <CardHead title="Score guide" />
-      <ul className="flex flex-col gap-2.5 px-3.5 pb-4">
-        {SCORE_GUIDE.map((g) => (
-          <li key={g.label} className="flex items-center gap-2.5">
-            <span
-              className="num inline-flex h-[24px] w-[50px] shrink-0 items-center justify-center rounded-[5px] border text-[10px] font-semibold whitespace-nowrap"
-              style={{
-                color: TONE[g.tone].fg,
-                backgroundColor: TONE[g.tone].bg,
-                borderColor: TONE[g.tone].line,
-              }}
-            >
-              {g.range}
-            </span>
-            <span className="min-w-0">
-              <span className="block text-[11px] font-semibold text-[var(--color-ink)]">
-                {g.label}
-              </span>
-              <span className="block text-[9.5px] leading-snug text-[var(--color-ink-3)]">
-                {g.detail}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}

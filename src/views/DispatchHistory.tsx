@@ -88,7 +88,7 @@ export function DispatchHistory() {
             <CardHead
               title={`In flight (${open.length})`}
               right={
-                <span className="num text-[9px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
+                <span className="num text-[10px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
                   Closes on ETA
                 </span>
               }
@@ -115,7 +115,7 @@ export function DispatchHistory() {
                       <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
                         {run.truckId}
                       </span>
-                      <span className="block text-[9.5px] text-[var(--color-ink-3)]">
+                      <span className="block text-[10px] text-[var(--color-ink-3)]">
                         {run.depot}
                       </span>
                     </Td>
@@ -126,7 +126,7 @@ export function DispatchHistory() {
                       >
                         {run.stationName}
                       </Link>
-                      <span className="block text-[9.5px] text-[var(--color-ink-3)]">
+                      <span className="block text-[10px] text-[var(--color-ink-3)]">
                         {run.borough}
                       </span>
                     </Td>
@@ -204,7 +204,7 @@ export function DispatchHistory() {
                           <TonePill label={OUTCOME_LABEL[outcome]} tone={OUTCOME_TONE[outcome]} />
                         </Tooltip>
                         {run.auto && (
-                          <span className="mt-1 block text-[9px] text-[var(--color-ink-3)] italic">
+                          <span className="mt-1 block text-[10px] text-[var(--color-ink-3)] italic">
                             unconfirmed
                           </span>
                         )}
@@ -213,7 +213,7 @@ export function DispatchHistory() {
                         <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
                           {run.truckId}
                         </span>
-                        <span className="block text-[9.5px] text-[var(--color-ink-3)]">
+                        <span className="block text-[10px] text-[var(--color-ink-3)]">
                           {run.depot}
                         </span>
                       </Td>
@@ -224,7 +224,7 @@ export function DispatchHistory() {
                         >
                           {run.stationName}
                         </Link>
-                        <span className="block text-[9.5px] text-[var(--color-ink-3)]">
+                        <span className="block text-[10px] text-[var(--color-ink-3)]">
                           {run.borough}
                         </span>
                       </Td>
@@ -247,7 +247,7 @@ export function DispatchHistory() {
                         >
                           {share === null ? '–' : `${Math.round(share * 100)}%`}
                         </span>
-                        <span className="num mt-0.5 block text-[9px] text-[var(--color-ink-3)]">
+                        <span className="num mt-0.5 block text-[10px] text-[var(--color-ink-3)]">
                           {bikesMoved(run) ?? '–'} of {run.ordered}
                         </span>
                       </Td>
@@ -397,7 +397,7 @@ export function OutcomeChip({ run }: { run: DispatchRun }) {
   const outcome = outcomeOf(run);
   if (!outcome) {
     return (
-      <span className="inline-flex items-center gap-1 text-[9.5px]" style={{ color: TONE.warn.fg }}>
+      <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: TONE.warn.fg }}>
         <Icon name="truck" size={10} />
         {run.truckId} · {elapsedMinutes(run)}m
       </span>
@@ -405,7 +405,7 @@ export function OutcomeChip({ run }: { run: DispatchRun }) {
   }
   return (
     <span
-      className="inline-flex items-center gap-1 text-[9.5px]"
+      className="inline-flex items-center gap-1 text-[10px]"
       style={{ color: TONE[OUTCOME_TONE[outcome]].fg }}
     >
       <Icon name="truck" size={10} />

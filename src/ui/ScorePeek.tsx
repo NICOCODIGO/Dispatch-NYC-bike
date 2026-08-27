@@ -102,7 +102,7 @@ export function ScorePeek({
               version and the paragraph version cannot reach opposite verdicts
               about one station. */}
           <p
-            className="mt-1.5 text-[9.5px] leading-snug"
+            className="mt-1.5 text-[10px] leading-snug"
             style={{ color: TONE[VERDICT_TONE[verdict]].fg }}
           >
             {VERDICT_LINE[verdict]}
@@ -152,7 +152,7 @@ function PeekLine({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="min-w-0 text-[9.5px] leading-snug text-[var(--color-ink-2)]">{label}</dt>
+      <dt className="min-w-0 text-[10px] leading-snug text-[var(--color-ink-2)]">{label}</dt>
       <dd
         className={`num shrink-0 text-[10px] ${value === 0 ? 'text-[var(--color-ink-3)]' : 'font-semibold text-[var(--color-ink)]'}`}
       >

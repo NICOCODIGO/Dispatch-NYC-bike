@@ -166,7 +166,7 @@ export function Unverified() {
                             'Unverified Stations',
                             '/unverified',
                           )}
-                          className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[9.5px] text-[var(--color-ink-3)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
+                          className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] text-[var(--color-ink-3)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
                         >
                           <Icon name="map" size={10} />
                           show on map
@@ -181,7 +181,7 @@ export function Unverified() {
                         <span className="num text-[11px]" style={{ color: TONE.empty.fg }}>
                           {formatReportedAge(breakdown.staleness.ageMinutes)}
                         </span>
-                        <span className="mt-px block text-[9.5px] text-[var(--color-ink-3)]">
+                        <span className="mt-px block text-[10px] text-[var(--color-ink-3)]">
                           {unverifiedReason(entry)}
                         </span>
                       </Td>
@@ -229,7 +229,12 @@ export function Unverified() {
                                 name: `${station.name} — Not Reporting`,
                                 where: `${station.name} · Station #${shortStationId(station.stationId)} · ${station.borough}`,
                                 region: station.borough,
-                                icon: 'radio-tower',
+                                stationId: station.stationId,
+                                // A station that has gone silent is a power or
+                                // comms fault at the site, not a jammed dock —
+                                // and the distinction decides which crew goes.
+                                type: 'station-power',
+                                priority: null,
                                 detail:
                                   excess === null
                                     ? 'The feed carries no usable timestamp for this station at all. Escalated from Unverified Stations; modem or power fault suspected.'
@@ -364,7 +369,7 @@ function ReportingHealth() {
         title="Reporting health (24h)"
         right={
           <span
-            className="text-[9px] font-semibold tracking-[0.08em] uppercase"
+            className="text-[10px] font-semibold tracking-[0.08em] uppercase"
             style={{ color: TONE.ok.fg }}
           >
             {REPORTING_HEALTH.verdict}
@@ -373,7 +378,7 @@ function ReportingHealth() {
       />
       <div className="px-3.5 pb-3.5">
         <BarRow bars={REPORTING_HEALTH.bars} height={54} />
-        <div className="num mt-1.5 flex justify-between text-[9px] text-[var(--color-ink-3)]">
+        <div className="num mt-1.5 flex justify-between text-[10px] text-[var(--color-ink-3)]">
           {REPORTING_HEALTH.axis.map((a) => (
             <span key={a}>{a}</span>
           ))}
@@ -383,7 +388,7 @@ function ReportingHealth() {
             {REPORTING_HEALTH.uptime}
             <span className="text-[13px]">%</span>
           </p>
-          <p className="eyebrow text-[9px]">Avg uptime</p>
+          <p className="eyebrow text-[10px]">Avg uptime</p>
         </div>
       </div>
     </Card>
@@ -407,7 +412,7 @@ function BatteryCard() {
             <p className="num text-[22px] leading-none font-semibold text-[var(--color-ink)]">
               {BATTERY.count}
             </p>
-            <p className="eyebrow mt-1 text-[9px]">{BATTERY.caption}</p>
+            <p className="eyebrow mt-1 text-[10px]">{BATTERY.caption}</p>
           </div>
         </div>
         <div className="mt-4">

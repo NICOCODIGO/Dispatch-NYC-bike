@@ -34,9 +34,6 @@ export const REQUEST_TIMEOUT_MS = 15_000;
  */
 export const MIN_PLAUSIBLE_EPOCH_S = 1_000_000_000; // 2001-09-09
 
-// ---------------------------------------------------------------------------
-// Narrow parse helpers
-// ---------------------------------------------------------------------------
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);

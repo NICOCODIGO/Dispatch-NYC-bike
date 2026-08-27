@@ -58,23 +58,37 @@
   --color-line: #e9e3d7;
   --color-line-soft: #f0ebe1;
 
-  --color-ink: #2b2621;
-  --color-ink-2: #6f665a;
-  --color-ink-3: #9a9083;
+  /* Three weights of text, all of which must clear WCAG AA (4.5:1) against the
+     lightest thing they sit on — the cream canvas, not the white card.
+
+     `ink-3` was #9a9083, which measured 2.83:1 on canvas. That is not a subtle
+     miss; it is roughly the contrast of light grey on white, and it was the
+     token carrying nearly every small line in the app — row subtitles, footers,
+     timestamps, hints. The whole interface reading as washed-out traces almost
+     entirely to this one value. */
+  --color-ink: #2b2621; /* 13.5:1 on canvas */
+  --color-ink-2: #6f665a; /* 5.09:1 */
+  --color-ink-3: #756d64; /* 4.59:1 — was #9a9083 at 2.83:1 */
 
   /* ---- Chrome (the sidebar rail) --------------------------------------- */
   --color-rail: #2b2621;
   --color-rail-hi: #3a332b;
   --color-rail-line: #3d362e;
   --color-rail-ink: #ffffff;
-  --color-rail-ink-2: #a79e90;
-  --color-rail-ink-3: #6e655a;
+  --color-rail-ink-2: #a79e90; /* 5.66:1 on the rail */
+  --color-rail-ink-3: #938c84; /* 4.51:1 — was #6e655a at 2.62:1 */
 
   /* ---- Signals ---------------------------------------------------------
      Empty/critical is red, flooded is blue, low-stock/warning is amber and
      healthy is green. Each ships a `-bg` tint for badge fills and a `-line`
      for their hairlines. */
-  --color-empty: #c0453a;
+  /* Signal hues carry two jobs at once — they are text (a warning line, a
+     count) and they are fill (a bar, a dot, a donut slice). Text owes 4.5:1,
+     fill only 3:1, and where the two pulled in different directions the text
+     obligation won, because a colour that cannot be read is not carrying
+     information at all. Each is darkened along its own hue rather than toward
+     grey, so the warm/cool split that encodes rent-vs-return survives. */
+  --color-empty: #be4439; /* 5.15:1 on white, 4.55:1 on its own tint */
   --color-empty-bg: #fbeeec;
   --color-empty-line: #f0d3ce;
 
@@ -87,11 +101,22 @@
      each carries severity. Without this, "low stock" and "flooded" collide on
      the same amber and the legend shows two identical swatches for opposite
      problems. */
-  --color-flood-soft: #6b9ec7;
+  /* The one token held to 3:1 rather than 4.5:1, on purpose. Darkening it to
+     text contrast puts it at L* 18 against `flood`'s L* 14.8 — near-identical,
+     which would erase the very severity step this pair exists to draw. It is
+     used as fill (bars, dots, slices), where 3:1 is the bar; the *word*
+     "Flooded" is drawn in neutral ink by StatusPill, so nothing depends on
+     reading text in this colour. */
+  --color-flood-soft: #6899c1; /* 3.04:1 on white — graphical minimum */
   --color-flood-soft-bg: #eff5fa;
   --color-flood-soft-line: #d9e6f1;
 
-  --color-warn: #c98626;
+  /* Amber is the hard one: no amber light enough to read as amber clears 4.5:1
+     on white, so this is deliberately pushed to the dark end of the hue. It is
+     browner than the comp's #c98626 (3.03:1) and that is the price of the
+     "needs a truck" line being legible. Still unmistakably warm against
+     `empty`'s red, which is the distinction that has to survive. */
+  --color-warn: #a16b1e; /* 4.52:1 on white */
   --color-warn-bg: #fbf2e3;
   --color-warn-line: #eeddbf;
 
@@ -99,7 +124,7 @@
   --color-ok-bg: #ecf4ef;
   --color-ok-line: #cee0d5;
 
-  --color-mute: #9a9083;
+  --color-mute: #7d756a; /* 4.56:1 on white — was #9a9083 at 3.14:1 */
   --color-mute-bg: #f3f0e9;
   --color-mute-line: #e4ded2;
 

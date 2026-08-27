@@ -36,6 +36,8 @@ function valueFor(s: ScoredStation, key: SortKey): number | string {
       return s.breakdown.score;
     case 'name':
       return s.station.name.toLowerCase();
+    case 'borough':
+      return s.station.borough.toLowerCase();
     case 'fill':
       return s.breakdown.fill.ratio ?? NULLS_LAST;
     case 'reported':

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { ACTIVITY_LOG, TICKETS, type ActivityEntry, type Ticket } from '../mock/data';
+import { ACTIVITY_LOG, WORK_ORDERS, type ActivityEntry } from '../mock/data';
+import { isOpen, type WorkOrder, type WorkOrderType } from '../model/workOrder';
 import {
   outcomeOf,
   runSummary,
@@ -10,10 +11,9 @@ import {
 /**
  * Wall clock, "23:05".
  *
- * Real, now that the rail shows real time. The two seeded tickets still carry
- * fixture stamps (13:45, 10:12) and that is fine — they are fixtures and
- * labelled as such. Anything the console actually creates is stamped when it
- * happened.
+ * Used for the activity log, which reads as a chronological feed. Work orders
+ * deliberately do *not* use it — they store epoch milliseconds, because an age
+ * and an SLA cannot be computed from a rendered string.
  */
 function clock(d = new Date()): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -48,7 +48,11 @@ export interface MechRequest {
   region: string;
   /** One sentence of why, written by the screen that knows. */
   detail: string;
-  icon?: Ticket['icon'];
+  /** Defaults to a dock repair — what a mechanic is usually being sent for. */
+  type?: WorkOrderType;
+  /** The station's urgency at the moment of escalation, where the caller knows it. */
+  priority?: number | null;
+  stationId?: string | null;
 }
 
 /* ---------------------------------------------------------------------------
@@ -78,7 +82,7 @@ interface ConsoleState {
   openStation: (id: string) => void;
   closeStation: () => void;
 
-  tickets: Ticket[];
+  workOrders: WorkOrder[];
   activity: ActivityEntry[];
   /** Keys already escalated, so a screen can show what it has already done. */
   dispatched: string[];
@@ -150,7 +154,7 @@ export const useConsole = create<ConsoleState>((set, get) => ({
   openStation: (id) => set({ openStationId: id }),
   closeStation: () => set({ openStationId: null }),
 
-  tickets: TICKETS,
+  workOrders: WORK_ORDERS,
   activity: ACTIVITY_LOG,
   dispatched: [],
 
@@ -159,16 +163,23 @@ export const useConsole = create<ConsoleState>((set, get) => ({
 
     const at = clock();
 
-    const ticket: Ticket = {
-      id: `mech-${req.key}`,
-      title: req.name,
-      severity: 'CRITICAL',
-      tone: 'empty',
-      icon: req.icon ?? 'wrench',
-      where: req.where,
-      reported: at,
-      fault: req.detail,
-      assignment: { kind: 'pending', label: 'PENDING MECHANIC' },
+    const order: WorkOrder = {
+      id: `wo-${req.key}`,
+      type: req.type ?? 'dock-repair',
+      target: {
+        stationId: req.stationId ?? null,
+        stationName: req.name,
+        borough: req.region,
+      },
+      // Carried from the caller where it knows, rather than stamped CRITICAL
+      // for everything the way the old ticket was. A screen that marks all its
+      // own output critical has told you nothing about any of it.
+      priority: req.priority ?? null,
+      status: 'open',
+      assignee: null,
+      openedAt: Date.now(),
+      closedAt: null,
+      detail: req.detail,
     };
 
     const entry: ActivityEntry = {
@@ -181,7 +192,7 @@ export const useConsole = create<ConsoleState>((set, get) => ({
     };
 
     set((s) => ({
-      tickets: [ticket, ...s.tickets],
+      workOrders: [order, ...s.workOrders],
       activity: [entry, ...s.activity],
       dispatched: [...s.dispatched, req.key],
     }));
@@ -305,7 +316,18 @@ export const useConsole = create<ConsoleState>((set, get) => ({
     }),
 }));
 
-/** Tickets nobody has picked up yet — the "N dispatch pending" figure. */
-export function pendingCount(tickets: Ticket[]): number {
-  return tickets.filter((t) => t.assignment.kind === 'pending').length;
+/**
+ * Orders nobody has picked up yet — the "N dispatch pending" figure.
+ *
+ * Counts `open` only. An order that is assigned but not started is somebody's
+ * problem and should not appear here; that it can then sit untouched for a
+ * shift is what the SLA clock is for.
+ */
+export function pendingCount(orders: WorkOrder[]): number {
+  return orders.filter((o) => o.status === 'open').length;
+}
+
+/** Everything still live, for the screens that show a backlog. */
+export function openOrders(orders: WorkOrder[]): WorkOrder[] {
+  return orders.filter(isOpen);
 }

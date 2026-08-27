@@ -319,7 +319,7 @@ function Schematic({
         {ZONE_MARKERS.map((m, i) => (
           <span
             key={`z${i}`}
-            className="num absolute flex h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-ink)] bg-[var(--color-surface)] text-[9px] font-semibold text-[var(--color-ink)]"
+            className="num absolute flex h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-ink)] bg-[var(--color-surface)] text-[10px] font-semibold text-[var(--color-ink)]"
             style={{ left: `${m.x}%`, top: `${m.y}%` }}
           >
             {m.count}
@@ -378,7 +378,7 @@ function MapLegend({ layer, showTruck = true }: { layer: 'bikes' | 'docks'; show
 
   return (
     <div className="absolute bottom-4 left-4 z-10 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/95 px-3 py-2.5 shadow-[0_2px_10px_rgb(43_38_33/8%)]">
-      <p className="eyebrow text-[8px]">{layer === 'bikes' ? 'Urgency' : 'Fill'}</p>
+      <p className="eyebrow text-[10px]">{layer === 'bikes' ? 'Urgency' : 'Fill'}</p>
       <ul className="mt-2 flex flex-col gap-1.5">
         {items.map((i) => (
           <li key={i.label} className="flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
@@ -391,7 +391,7 @@ function MapLegend({ layer, showTruck = true }: { layer: 'bikes' | 'docks'; show
           </li>
         ))}
       </ul>
-      <p className="mt-2 border-t border-[var(--color-line-soft)] pt-2 text-[9.5px] leading-snug text-[var(--color-ink-3)]">
+      <p className="mt-2 border-t border-[var(--color-line-soft)] pt-2 text-[10px] leading-snug text-[var(--color-ink-3)]">
         Dot size is station capacity. Click one to open its receipt.
       </p>
       {showTruck && (
@@ -458,7 +458,7 @@ function StationPopup({
       <div className="mt-2">
         <Bar value={station.fill} tone={station.fillTone} height={5} />
       </div>
-      <div className="num mt-1.5 flex justify-between text-[9px] text-[var(--color-ink-3)]">
+      <div className="num mt-1.5 flex justify-between text-[10px] text-[var(--color-ink-3)]">
         <span>{pct === null ? 'unknown' : `${pct}% utilization`}</span>
         <span>{free === null ? '—' : `${free} slots free`}</span>
       </div>
@@ -485,7 +485,7 @@ function StationPopup({
 function MiniStat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="rounded-md border border-[var(--color-line)] bg-[var(--color-sunken)] px-2 py-1.5">
-      <p className="eyebrow text-[8px]">{label}</p>
+      <p className="eyebrow text-[10px]">{label}</p>
       <p className="mt-1 leading-none">{children}</p>
     </div>
   );

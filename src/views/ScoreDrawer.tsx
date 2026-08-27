@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DispatchComposer } from './DispatchComposer';
 import { Icon } from '../ui/Icon';
-import { Bar, Button, ScoreBadge } from '../ui/primitives';
+import { Bar, Button, ScoreBadge, StatusPill } from '../ui/primitives';
+import { ProvenancePill } from '../ui/ProvenancePill';
+import { CONDITION_LABEL, LOW_CHARGE, bikesAt, summarize } from '../sim/fleet';
 import { TONE, type Tone } from '../ui/tone';
 import {
   CAPACITY_WEIGHT_CAP,
@@ -150,6 +152,7 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
                 duration={row.duration ?? null}
                 raw={row.raw}
               />
+              <OnTheRack row={row} />
             </>
           ) : (
             factors.length > 0 && (
@@ -185,7 +188,7 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
                     = {total} / 100
                   </span>
                 </div>
-                <p className="mt-2 text-[9px] text-[var(--color-ink-3)] italic">
+                <p className="mt-2 text-[10px] text-[var(--color-ink-3)] italic">
                   Fixture station — these contributions are illustrative.
                 </p>
               </>
@@ -355,7 +358,7 @@ function Fact({
 }) {
   return (
     <div className="rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1.5">
-      <dt className="eyebrow text-[8px]">{label}</dt>
+      <dt className="eyebrow text-[10px]">{label}</dt>
       <dd
         className={cn(
           'num mt-1 leading-none font-semibold text-[var(--color-ink)]',
@@ -387,6 +390,163 @@ function Raw({
       <dt className="text-[var(--color-ink-3)]">{term}</dt>
       <dd className="num text-right text-[var(--color-ink)]">{children}</dd>
     </div>
+  );
+}
+
+/**
+ * The bikes actually standing at this station.
+ *
+ * GBFS is station-level arithmetic — twelve bikes, three electric, two broken —
+ * and never says which twelve. Everything a mechanic or a swap crew touches is
+ * an individual frame, so this panel models them.
+ *
+ * It is labelled `Simulated` at the top and every claim in it is sized by a
+ * real count, which is the only reason it is defensible to show at all. See
+ * `src/sim/fleet.ts` for the rule and the tests that hold it.
+ *
+ * Rendered from `raw` rather than from a store because it is a pure function of
+ * the station status: the same counts always produce the same rack, so there is
+ * nothing to keep in state.
+ */
+function OnTheRack({ row }: { row: StationRow }) {
+  const [open, setOpen] = useState(false);
+  const raw = row.raw;
+
+  const bikes = useMemo(() => {
+    // `row.bikes` is null exactly when the station is unverified — the lane
+    // whose counts the app has already decided not to trust. Elaborating a rack
+    // of individual frames on top of numbers the board refuses to rank on would
+    // be the one place this panel could do real harm.
+    if (!raw || row.bikes === null) return [];
+
+    return bikesAt(
+      {
+        stationId: raw.stationId,
+        bikesAvailable: row.bikes,
+        ebikesAvailable: raw.ebikesAvailable,
+        docksAvailable: row.openDocks ?? 0,
+        bikesDisabled: raw.bikesDisabled,
+        docksDisabled: raw.docksDisabled,
+        isInstalled: raw.isInstalled,
+        isRenting: raw.isRenting,
+        isReturning: raw.isReturning,
+        lastReportedMs: raw.lastReportedMs,
+      },
+      // One clock for the whole panel, and one taken per rebuild rather than
+      // per render — bikes on a single screen must not disagree about how long
+      // they have been standing, and the charges should move at the 60s poll,
+      // not on every keystroke that rerenders the drawer.
+      Date.now(),
+    );
+  }, [raw, row.bikes, row.openDocks]);
+
+  const fleet = useMemo(() => summarize(bikes, raw?.stationId ?? ''), [bikes, raw?.stationId]);
+  if (!raw || row.bikes === null) return null;
+
+  return (
+    <section className="mt-5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h4 className="eyebrow">On the rack</h4>
+        <ProvenancePill
+          provenance="simulated"
+          detail="GBFS carries counts, never individual bikes. Frame numbers, charge and condition are modelled — but the number of bikes, how many are electric and how many are broken all come from the live feed, so this list can never disagree with the counts above it."
+        />
+      </div>
+
+      {bikes.length === 0 ? (
+        <p className="mt-2 text-[11px] text-[var(--color-ink-2)]">
+          Nothing on the rack — the station reports no bikes available.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-2)]">
+            <span className="num font-semibold text-[var(--color-ink)]">{fleet.electric}</span>{' '}
+            electric ·{' '}
+            <span className="num font-semibold text-[var(--color-ink)]">{fleet.classic}</span>{' '}
+            classic
+            {fleet.meanCharge !== null && (
+              <>
+                {' '}
+                · mean charge{' '}
+                <span className="num font-semibold text-[var(--color-ink)]">
+                  {fleet.meanCharge}%
+                </span>
+              </>
+            )}
+            {fleet.gridConnected && (
+              <>
+                {' '}
+                ·{' '}
+                <span style={{ color: TONE.ok.fg }}>
+                  <Icon name="plug-zap" size={10} /> docks charge
+                </span>
+              </>
+            )}
+          </p>
+
+          {fleet.lowCharge > 0 && (
+            <p className="mt-1 text-[11px]" style={{ color: TONE.warn.fg }}>
+              {fleet.lowCharge} e-bike{fleet.lowCharge === 1 ? '' : 's'} under {LOW_CHARGE}% — a
+              swap run, not a rebalance.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="mt-2 inline-flex cursor-pointer items-center gap-1 text-[10px] text-[var(--color-ink-3)] underline decoration-dotted underline-offset-2 hover:text-[var(--color-ink)]"
+          >
+            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
+            {open ? 'Hide bikes' : `Show all ${bikes.length}`}
+          </button>
+
+          {open && (
+            <ul className="fade-in mt-2 flex flex-col rounded-lg border border-[var(--color-line)] bg-[var(--color-sunken)] px-3 py-1">
+              {bikes.map((b, i) => (
+                <li
+                  key={b.id}
+                  className={cn(
+                    'flex items-center gap-2 py-1.5 text-[10px]',
+                    i < bikes.length - 1 && 'border-b border-[var(--color-line-soft)]',
+                  )}
+                >
+                  <span className="num w-[26px] shrink-0 text-[var(--color-ink-3)]">
+                    {b.dock}
+                  </span>
+                  <span className="num w-[54px] shrink-0 font-semibold text-[var(--color-ink)]">
+                    {b.id}
+                  </span>
+                  <span className="w-[52px] shrink-0 text-[var(--color-ink-2)]">
+                    {b.kind === 'electric' ? 'E-bike' : 'Classic'}
+                  </span>
+                  <span className="w-[46px] shrink-0">
+                    {b.charge === null ? (
+                      <span className="text-[var(--color-ink-3)]">—</span>
+                    ) : (
+                      <span
+                        className="num font-semibold"
+                        style={{ color: b.charge < LOW_CHARGE ? TONE.warn.fg : TONE.ok.fg }}
+                      >
+                        {b.charge}%
+                      </span>
+                    )}
+                  </span>
+                  <span className="ml-auto text-right">
+                    {b.condition === 'ok' ? (
+                      <span className="text-[var(--color-ink-3)]">
+                        {CONDITION_LABEL[b.condition]}
+                      </span>
+                    ) : (
+                      <StatusPill label={CONDITION_LABEL[b.condition]} />
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -576,7 +736,7 @@ function Readiness({ row }: { row: StationRow }) {
             </span>
             <span className="min-w-0">
               <span className="text-[10px] font-semibold text-[var(--color-ink)]">{c.label}</span>
-              <span className="block text-[9.5px] leading-snug text-[var(--color-ink-2)]">
+              <span className="block text-[10px] leading-snug text-[var(--color-ink-2)]">
                 {c.detail}
               </span>
             </span>
@@ -672,7 +832,7 @@ function LiveReceipt({
             <span className="text-[11px] font-normal text-[var(--color-ink-3)]"> / 100</span>
           </dd>
         </div>
-        <p className="num mt-1.5 text-right text-[9px] text-[var(--color-ink-3)]">
+        <p className="num mt-1.5 text-right text-[10px] text-[var(--color-ink-3)]">
           {breakdown.weighted} + {staleness.penalty}
           {durationPts > 0 && ` + ${durationPts}`}, rounded and clamped to 0–100
         </p>
@@ -770,7 +930,7 @@ function Line({
       <dt className="min-w-0">
         <span className="flex flex-wrap items-baseline gap-x-1.5">
           <span className="text-[11px] font-semibold text-[var(--color-ink)]">{label}</span>
-          <span className="num text-[9px] text-[var(--color-ink-3)]">{sub}</span>
+          <span className="num text-[10px] text-[var(--color-ink-3)]">{sub}</span>
         </span>
         <span className="mt-0.5 block text-[10px] leading-snug text-[var(--color-ink-3)]">
           {detail}

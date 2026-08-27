@@ -29,12 +29,15 @@ const DISPATCH_NAV: NavItem[] = [
   { to: '/map', label: 'Map View', icon: 'map' },
   { to: '/trucks', label: 'Truck Dispatch', icon: 'truck' },
   { to: '/history', label: 'Dispatch History', icon: 'clipboard-list' },
+  // Under Dispatch rather than Monitoring: it is not something you watch, it is
+  // the constraint on every decision the three screens above it make.
+  { to: '/shift', label: 'Shift', icon: 'users' },
 ];
 
 export function Sidebar() {
   // Badges count the real lanes, so escalating a node from Unverified moves
   // the Mechanic Alerts badge as it happens, and both track the live feed.
-  const ticketCount = useConsole((s) => s.tickets.length);
+  const ticketCount = useConsole((s) => s.workOrders.length);
   const unverified = useDispatch((s) => s.lanes.unverified.length);
   const faults = useDispatch((s) => s.lanes.mechanic.length);
   const scored = useDispatch((s) => s.scored);
@@ -89,7 +92,7 @@ function Brand() {
       </span>
       <span className="min-w-0">
         <span className="block text-[12px] leading-tight font-semibold text-white">Dispatch</span>
-        <span className="block text-[9px] leading-tight text-[var(--color-rail-ink-3)]">
+        <span className="block text-[10px] leading-tight text-[var(--color-rail-ink-3)]">
           NYC Bike Ops
         </span>
       </span>
@@ -124,7 +127,7 @@ function LiveStrip() {
           : 'The board polls every 60 seconds while this tab is visible.'
       }
     >
-      <span className="flex items-center gap-1.5 text-[9px] text-[var(--color-rail-ink-2)]">
+      <span className="flex items-center gap-1.5 text-[10px] text-[var(--color-rail-ink-2)]">
         <span
           aria-hidden="true"
           className={cn('h-[5px] w-[5px] rounded-full', !error && !stale && 'pulse-dot')}
@@ -132,7 +135,7 @@ function LiveStrip() {
         />
         {error ? 'Retrying' : fetchedAtMs === null ? 'Connecting…' : `Updated ${formatAgo(now - fetchedAtMs)} ago`}
       </span>
-      <span className="num text-[9px] text-[var(--color-rail-ink-3)]">
+      <span className="num text-[10px] text-[var(--color-rail-ink-3)]">
         {fetchedAtMs === null ? '--:--' : formatClock(fetchedAtMs).slice(0, 5)}
       </span>
     </div>
@@ -150,7 +153,7 @@ function Group({
 }) {
   return (
     <div className={className}>
-      <p className="px-2 pb-1 text-[8px] font-semibold tracking-[0.12em] text-[var(--color-rail-ink-3)] uppercase">
+      <p className="px-2 pb-1 text-[10px] font-semibold tracking-[0.12em] text-[var(--color-rail-ink-3)] uppercase">
         {label}
       </p>
       <ul className="flex flex-col gap-px">{children}</ul>
@@ -199,12 +202,12 @@ function NavRow({
             {icon && <Icon name={icon} size={13} />}
             <span className="flex-1 truncate">{label}</span>
             {badge !== undefined && (
-              <span className="num rounded bg-[#453d33] px-1.5 py-px text-[9px] font-semibold text-[#d8cfc0]">
+              <span className="num rounded bg-[#453d33] px-1.5 py-px text-[10px] font-semibold text-[#d8cfc0]">
                 {badge}
               </span>
             )}
             {count !== undefined && (
-              <span className="num text-[9px] text-[var(--color-rail-ink-3)]">{count}</span>
+              <span className="num text-[10px] text-[var(--color-rail-ink-3)]">{count}</span>
             )}
           </>
         )}
@@ -222,7 +225,7 @@ function UserFooter() {
       />
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] leading-tight font-medium text-white">Ops Center</span>
-        <span className="block text-[9px] leading-tight text-[var(--color-rail-ink-3)]">Admin</span>
+        <span className="block text-[10px] leading-tight text-[var(--color-rail-ink-3)]">Admin</span>
       </span>
       <button
         type="button"

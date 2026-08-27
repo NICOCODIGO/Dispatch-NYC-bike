@@ -1,26 +1,44 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { focusHref } from '../state/useFocus';
+import { focusHref, useArrival, useScrollToFocus } from '../state/useFocus';
 import { COLUMN_HELP } from '../content/columns';
 import { PageBody, PageHeader } from '../shell/AppShell';
-import { Icon } from '../ui/Icon';
-import { Button, Card, CardHead, Finding, Segmented, Td, Th, TonePill } from '../ui/primitives';
-import { TONE } from '../ui/tone';
-import { pendingCount, useConsole } from '../state/useConsole';
+import { Icon, type IconName } from '../ui/Icon';
+import { ArrivalBanner, Avatar, Button, Card, CardHead, Finding, Segmented, Td, Th, TonePill } from '../ui/primitives';
+import { TONE, type Tone } from '../ui/tone';
+import { openOrders, pendingCount, useConsole } from '../state/useConsole';
 import { useDispatch } from '../store/useDispatch';
 import { mechanicFault } from '../model/triage';
 import { CATEGORY_LABEL } from '../model/score';
-import { formatReportedAge } from '../lib/time';
+import {
+  SLA_MINUTES,
+  STATUS_LABEL,
+  URGENCY_LABEL,
+  WORK_ORDER_LABEL,
+  ageMinutes,
+  backlog,
+  slaState,
+  sortByPressure,
+  urgencyOf,
+  type SlaState,
+  type Urgency,
+  type WorkOrder,
+  type WorkOrderType,
+} from '../model/workOrder';
+import { formatAgo, formatReportedAge } from '../lib/time';
 import { shortStationId } from '../data/adapt';
 import { capacityLoss, networkDocks } from '../data/insights';
 import type { ScoredStation } from '../model/summary';
 import {
-  MECHANICS,
-  MECHANICS_ON_SHIFT,
-  stationById,
-  type ActivityEntry,
-  type Ticket,
-} from '../mock/data';
+  ROLE_LABEL,
+  STAFF_STATUS_LABEL,
+  currentOrder,
+  isOnShift,
+  statusOf,
+  type Role,
+} from '../model/roster';
+import { ROSTER, mechanicName, stationById, type ActivityEntry } from '../mock/data';
+import { cn } from '../lib/cn';
 
 /**
  * Work a truck cannot do.
@@ -32,17 +50,38 @@ import {
  */
 export function Mechanics() {
   const [tab, setTab] = useState<'active' | 'history'>('active');
-  const tickets = useConsole((s) => s.tickets);
+  const workOrders = useConsole((s) => s.workOrders);
   const activity = useConsole((s) => s.activity);
   const faults = useDispatch((s) => s.lanes.mechanic);
 
-  const pending = pendingCount(tickets);
+  // One clock for the whole render, so two cards cannot disagree about what
+  // time it is while one of them is deciding it has breached.
+  const now = Date.now();
+  const orders = useMemo(() => sortByPressure(workOrders, now), [workOrders, now]);
+  const stats = useMemo(() => backlog(workOrders, now), [workOrders, now]);
+
+  // Counts the roles that repair things, not the whole rota — a driver on shift
+  // is real capacity, but not capacity for anything on this screen.
+  const mechanicsOnShift = useMemo(() => {
+    const repairRoles: Role[] = ['field-mechanic', 'depot-mechanic', 'swap-tech'];
+    const date = new Date(now);
+    return ROSTER.filter((p) => repairRoles.includes(p.role) && isOnShift(p, date)).length;
+  }, [now]);
+
+  const pending = pendingCount(workOrders);
+
+  // A reader can arrive here from the Priority Queue's escalation banner,
+  // pointed at one fault it flagged as unassigned. Mirrors the queue's own
+  // arrival handling so Back and reload behave the same everywhere.
+  const arrival = useArrival();
+  const focusedFault = arrival.focus ? faults.find((f) => f.station.stationId === arrival.focus) : undefined;
+  useScrollToFocus(arrival.focus, faults.length > 0);
 
   return (
     <>
       <PageHeader
         title="Maintenance Operations"
-        subtitle={`Work a truck cannot do. ${faults.length} station${faults.length === 1 ? '' : 's'} reported broken by the feed · ${tickets.length} open work order${tickets.length === 1 ? '' : 's'} · ${MECHANICS_ON_SHIFT.active} mechanics on shift · ${pending} pending assignment`}
+        subtitle={`Work a truck cannot do. ${faults.length} station${faults.length === 1 ? '' : 's'} reported broken by the feed · ${stats.open} open work order${stats.open === 1 ? '' : 's'}${stats.breached > 0 ? `, ${stats.breached} past target` : ''} · ${mechanicsOnShift} mechanic${mechanicsOnShift === 1 ? '' : 's'} on shift · ${pending} pending assignment`}
         actions={
           <>
             <Segmented
@@ -62,21 +101,52 @@ export function Mechanics() {
       />
 
       <PageBody>
+        {arrival.focus && arrival.from && (
+          <ArrivalBanner
+            from={arrival.from}
+            back={arrival.back}
+            detail={
+              focusedFault
+                ? `showing ${focusedFault.station.name}`
+                : 'that station is no longer reporting a mechanical fault — it may have been fixed or come back online'
+            }
+            onDismiss={arrival.dismiss}
+          />
+        )}
+
         <OutOfServiceFinding faults={faults} />
 
         <div className="mt-3.5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_286px]">
           <div className="min-w-0">
             {tab === 'active' ? (
               <>
-                <FeedFaults />
+                <FeedFaults focusId={arrival.focus} />
 
-                <h2 className="eyebrow mt-4 mb-2.5 text-[9px]">
-                  Work orders ({tickets.length})
-                </h2>
+                <div className="mt-4 mb-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <h2 className="eyebrow text-[10px]">Work orders ({stats.open})</h2>
+                  {/* The backlog's own condition, before you read any of it.
+                      A list of cards says how much there is; only these say
+                      whether it is being kept up with. */}
+                  {stats.breached > 0 && (
+                    <span className="text-[10px] font-semibold" style={{ color: TONE.empty.fg }}>
+                      {stats.breached} past target
+                    </span>
+                  )}
+                  {stats.dueSoon > 0 && (
+                    <span className="text-[10px] font-semibold" style={{ color: TONE.warn.fg }}>
+                      {stats.dueSoon} due soon
+                    </span>
+                  )}
+                  {stats.meanOpenAge !== null && (
+                    <span className="text-[10px] text-[var(--color-ink-3)]">
+                      mean age {formatAgo(stats.meanOpenAge * 60_000)}
+                    </span>
+                  )}
+                </div>
                 <ul className="flex flex-col gap-3.5">
-                  {tickets.map((t) => (
-                    <li key={t.id}>
-                      <TicketCard ticket={t} />
+                  {orders.map((o) => (
+                    <li key={o.id}>
+                      <WorkOrderCard order={o} now={now} />
                     </li>
                   ))}
                 </ul>
@@ -89,7 +159,7 @@ export function Mechanics() {
           </div>
 
           <aside className="flex flex-col gap-3.5" aria-label="Mechanics and activity">
-            <ActiveMechanics />
+            <ActiveMechanics orders={workOrders} now={now} />
             <ActivityLog entries={activity} />
           </aside>
         </div>
@@ -109,7 +179,8 @@ export function Mechanics() {
 function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
   const scored = useDispatch((s) => s.scored);
   const phase = useDispatch((s) => s.phase);
-  const tickets = useConsole((s) => s.tickets);
+  const workOrders = useConsole((s) => s.workOrders);
+  const open = useMemo(() => openOrders(workOrders), [workOrders]);
   const dispatched = useConsole((s) => s.dispatched);
 
   if (phase === 'loading' && scored.length === 0) {
@@ -122,7 +193,7 @@ function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
         icon="wrench"
         tone="ok"
         headline="No station is reporting a mechanical fault."
-        detail={`Every station the feed returned is renting, returning and showing usable slots. ${tickets.length} work order${tickets.length === 1 ? '' : 's'} remain open from earlier.`}
+        detail={`Every station the feed returned is renting, returning and showing usable slots. ${open.length} work order${open.length === 1 ? '' : 's'} remain open from earlier.`}
       />
     );
   }
@@ -164,7 +235,7 @@ function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
         { label: 'stations down', value: loss.stations, tone: 'empty' },
         { label: 'docks offline', value: loss.docks.toLocaleString('en-US'), tone: 'empty' },
         { label: 'of network', value: `${(loss.share * 100).toFixed(1)}%` },
-        { label: 'open orders', value: tickets.length },
+        { label: 'open orders', value: open.length },
         {
           label: 'awaiting an order',
           value: unraised,
@@ -191,7 +262,7 @@ function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
 /** Rows shown before the list is truncated. The lane can run to dozens. */
 const FAULT_LIMIT = 6;
 
-function FeedFaults() {
+function FeedFaults({ focusId }: { focusId: string | null }) {
   const faults = useDispatch((s) => s.lanes.mechanic);
   const phase = useDispatch((s) => s.phase);
   const dispatchMechanic = useConsole((s) => s.dispatchMechanic);
@@ -206,7 +277,7 @@ function FeedFaults() {
       <CardHead
         title={`Reported broken by the feed (${faults.length})`}
         right={
-          <span className="num text-[9px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
+          <span className="num text-[10px] tracking-[0.08em] text-[var(--color-ink-3)] uppercase">
             Live
           </span>
         }
@@ -242,10 +313,14 @@ function FeedFaults() {
                 const raised = dispatched.includes(station.stationId);
                 const fault = mechanicFault(entry);
 
+                const focused = station.stationId === focusId;
+
                 return (
                   <tr
                     key={station.stationId}
-                    className="border-b border-[var(--color-line-soft)] last:border-b-0"
+                    data-focus-id={station.stationId}
+                    className={`border-b border-[var(--color-line-soft)] last:border-b-0${focused ? ' bg-[var(--color-sunken)]' : ''}`}
+                    style={focused ? { boxShadow: `inset 3px 0 0 ${TONE.empty.fg}` } : undefined}
                   >
                     <Td>
                       <button
@@ -274,7 +349,7 @@ function FeedFaults() {
                       </span>
                       <Link
                         to={focusHref('/', station.stationId, 'Maintenance Ops', '/mechanics')}
-                        className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[9.5px] text-[var(--color-ink-3)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
+                        className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] text-[var(--color-ink-3)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
                       >
                         <Icon name="list-ordered" size={10} />
                         why it is off the queue
@@ -300,7 +375,9 @@ function FeedFaults() {
                               name: `${station.name} — ${CATEGORY_LABEL[breakdown.category]}`,
                               where: `${station.name} · Station #${shortStationId(station.stationId)} · ${station.borough}`,
                               region: station.borough,
-                              icon: 'plug-zap',
+                              stationId: station.stationId,
+                              type: 'dock-repair',
+                              priority: breakdown.scored ? breakdown.score : null,
                               detail: `Operator flags report: ${fault.toLowerCase()}. Reported ${formatReportedAge(breakdown.staleness.ageMinutes)}. The feed states that the station is out of service but not why — a mechanic needs to identify the fault on site.`,
                             })
                           }
@@ -332,14 +409,43 @@ function FeedFaults() {
 
 /* -------------------------------------------------------------------------- */
 
-function TicketCard({ ticket }: { ticket: Ticket }) {
-  const tone = TONE[ticket.tone];
-  const openStation = useConsole((s) => s.openStation);
-  const [before, after] = ticket.faultCode
-    ? ticket.fault.split('{code}')
-    : [ticket.fault, undefined];
+/** Presentation only — the model stays free of the UI vocabulary. */
+const TYPE_ICON: Record<WorkOrderType, IconName> = {
+  rebalance: 'truck',
+  'battery-swap': 'battery-low',
+  'station-power': 'plug-zap',
+  'dock-repair': 'cog',
+  'bike-repair': 'wrench',
+  inspection: 'info',
+};
 
-  const linkable = ticket.stationId ? stationById(ticket.stationId) : null;
+const URGENCY_TONE: Record<Urgency, Tone> = {
+  critical: 'empty',
+  high: 'warn',
+  routine: 'mute',
+};
+
+const SLA_TONE: Record<SlaState, Tone> = {
+  breached: 'empty',
+  'due-soon': 'warn',
+  ok: 'ok',
+  closed: 'mute',
+};
+
+function WorkOrderCard({ order, now }: { order: WorkOrder; now: number }) {
+  const urgency = urgencyOf(order);
+  const tone = TONE[URGENCY_TONE[urgency]];
+  const sla = slaState(order, now);
+  const openStation = useConsole((s) => s.openStation);
+
+  const [before, after] = order.faultCode
+    ? order.detail.split('{code}')
+    : [order.detail, undefined];
+
+  const linkable = order.target.stationId ? stationById(order.target.stationId) : null;
+  const assignee = mechanicName(order.assignee);
+  const age = ageMinutes(order, now);
+  const target = SLA_MINUTES[order.type];
 
   return (
     <Card
@@ -352,13 +458,15 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
           className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg"
           style={{ backgroundColor: tone.bg, color: tone.fg }}
         >
-          <Icon name={ticket.icon} size={17} />
+          <Icon name={TYPE_ICON[order.type]} size={17} />
         </span>
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">{ticket.title}</h3>
-            <TonePill label={ticket.severity} tone={ticket.tone} />
+            <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">
+              {WORK_ORDER_LABEL[order.type]} — {order.target.stationName}
+            </h3>
+            <TonePill label={URGENCY_LABEL[urgency]} tone={URGENCY_TONE[urgency]} />
           </div>
           {linkable ? (
             <button
@@ -366,39 +474,52 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
               onClick={() => openStation(linkable.id)}
               className="mt-1 block text-left text-[11px] text-[var(--color-ink-2)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
             >
-              {ticket.where}
+              {order.target.stationName} · {order.target.borough}
             </button>
           ) : (
-            <p className="mt-1 text-[11px] text-[var(--color-ink-2)]">{ticket.where}</p>
+            <p className="mt-1 text-[11px] text-[var(--color-ink-2)]">
+              {order.target.stationName} · {order.target.borough}
+            </p>
           )}
         </div>
 
+        {/* Age against target, not a wall-clock stamp. "13:45" told you when
+            somebody typed it; this tells you whether anyone is going to make
+            it, which is the only thing a backlog screen is for. */}
         <div className="shrink-0 text-right">
-          <p className="eyebrow text-[9px]">Reported</p>
-          <p className="num mt-1 text-[12px] font-semibold text-[var(--color-ink)]">
-            {ticket.reported}
+          <p className="eyebrow text-[10px]">Open for</p>
+          <p
+            className="num mt-1 text-[12px] font-semibold"
+            style={{ color: TONE[SLA_TONE[sla]].fg }}
+          >
+            {formatAgo(age * 60_000)}
+          </p>
+          <p className="num mt-0.5 text-[10px] text-[var(--color-ink-3)]">
+            {sla === 'breached'
+              ? `${formatAgo((age - target) * 60_000)} over`
+              : `of ${formatAgo(target * 60_000)}`}
           </p>
         </div>
       </div>
 
       <div className="mx-3.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-sunken)] px-3 py-2.5">
-        {ticket.faultCode && (
-          <p className="eyebrow flex items-center gap-1.5 text-[9px]">
+        {order.faultCode && (
+          <p className="eyebrow flex items-center gap-1.5 text-[10px]">
             <Icon name="cog" size={11} />
             Fault description
           </p>
         )}
         <p
           className={
-            ticket.faultCode
+            order.faultCode
               ? 'mt-1.5 text-[11px] leading-relaxed text-[var(--color-ink-2)]'
               : 'text-[11px] leading-relaxed text-[var(--color-ink-2)]'
           }
         >
           {before}
-          {ticket.faultCode && (
+          {order.faultCode && (
             <code className="num rounded border border-[var(--color-line)] bg-[var(--color-surface)] px-1 py-px text-[10px] text-[var(--color-ink)]">
-              {ticket.faultCode}
+              {order.faultCode}
             </code>
           )}
           {after}
@@ -406,11 +527,11 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-3.5 pb-3.5">
-        {ticket.assignment.kind === 'pending' ? (
+        {assignee === null ? (
           <p className="flex items-center gap-2 text-[11px] text-[var(--color-ink-3)] italic">
             Assignment:
             <span className="not-italic">
-              <TonePill label={ticket.assignment.label} tone="mute" />
+              <TonePill label={STATUS_LABEL[order.status]} tone="mute" />
             </span>
           </p>
         ) : (
@@ -418,31 +539,29 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
             Assigned to:
             <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] py-[3px] pr-2.5 pl-1 not-italic">
               <Avatar size={16} />
-              <span className="text-[11px] font-medium text-[var(--color-ink)]">
-                {ticket.assignment.who}
-              </span>
+              <span className="text-[11px] font-medium text-[var(--color-ink)]">{assignee}</span>
             </span>
             <span
-              className="inline-flex items-center gap-1 text-[9px] font-semibold tracking-[0.08em] not-italic"
+              className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-[0.08em] not-italic uppercase"
               style={{ color: TONE.ok.fg }}
             >
               <Icon name="truck" size={12} />
-              {ticket.assignment.status}
+              {STATUS_LABEL[order.status]}
             </span>
           </p>
         )}
 
-        {ticket.assignment.kind === 'pending' ? (
+        {assignee === null ? (
           <span className="flex items-center gap-2">
-            <Button size="sm" notBuilt="Would push this ticket to the next shift.">
+            <Button size="sm" notBuilt="Would push this order to the next shift.">
               Defer
             </Button>
-            <Button size="sm" variant="dark" notBuilt="Would put this ticket on a named mechanic.">
+            <Button size="sm" variant="dark" notBuilt="Would put this order on a named mechanic.">
               Assign Now
             </Button>
           </span>
         ) : (
-          <Button size="sm" variant="green" notBuilt="Would close the ticket and log who fixed it.">
+          <Button size="sm" variant="green" notBuilt="Would close the order and log who fixed it.">
             Complete Task
           </Button>
         )}
@@ -451,63 +570,76 @@ function TicketCard({ ticket }: { ticket: Ticket }) {
   );
 }
 
-function Avatar({ size = 22, online }: { size?: number; online?: boolean }) {
-  return (
-    <span className="relative inline-block shrink-0" style={{ width: size, height: size }}>
-      <span
-        aria-hidden="true"
-        className="block h-full w-full rounded-full bg-gradient-to-br from-[#9c8b73] to-[#5c5145]"
-      />
-      {online && (
-        <span
-          aria-hidden="true"
-          className="absolute right-0 bottom-0 h-[7px] w-[7px] rounded-full border-2 border-[var(--color-surface)]"
-          style={{ backgroundColor: TONE.ok.fg }}
-        />
-      )}
-    </span>
-  );
-}
 
-function ActiveMechanics() {
+/**
+ * Who can actually take one of these orders, right now.
+ *
+ * Only the roles that fix things — a rebalance driver on shift is real capacity
+ * but not capacity for anything on this screen, and listing them here would
+ * inflate the number a coordinator reads before deciding whether to escalate.
+ */
+function ActiveMechanics({ orders, now }: { orders: WorkOrder[]; now: number }) {
+  const date = new Date(now);
+  const repairRoles: Role[] = ['field-mechanic', 'depot-mechanic', 'swap-tech'];
+  const mechanics = ROSTER.filter((p) => repairRoles.includes(p.role));
+  const onNow = mechanics.filter((p) => isOnShift(p, date));
+
   return (
     <Card>
       <CardHead
-        title="Active mechanics"
+        title="Mechanics on shift"
         right={
           <span className="num text-[10px] text-[var(--color-ink-2)]">
-            {MECHANICS_ON_SHIFT.active}/{MECHANICS_ON_SHIFT.total}
+            {onNow.length}/{mechanics.length}
           </span>
         }
       />
       <ul className="px-3.5 pb-3">
-        {MECHANICS.map((m, i) => (
-          <li
-            key={m.name}
-            className={
-              i > 0
-                ? 'flex items-center gap-2.5 border-t border-[var(--color-line-soft)] py-2.5'
-                : 'flex items-center gap-2.5 py-2.5'
-            }
-          >
-            <Avatar online />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] font-semibold text-[var(--color-ink)]">
-                {m.name}
-              </span>
-              <span className="block truncate text-[10px] text-[var(--color-ink-3)]">
-                {m.status}
-              </span>
-            </span>
-            <button
-              type="button"
-              aria-label={`Call ${m.name}`}
-              className="shrink-0 text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
+        {mechanics.map((m, i) => {
+          const status = statusOf(m, orders, date);
+          const job = currentOrder(m, orders);
+          const off = status === 'off-shift';
+
+          return (
+            <li
+              key={m.id}
+              className={
+                i > 0
+                  ? 'flex items-center gap-2.5 border-t border-[var(--color-line-soft)] py-2.5'
+                  : 'flex items-center gap-2.5 py-2.5'
+              }
             >
-              <Icon name="phone" size={14} />
-            </button>
-          </li>
-        ))}
+              <Avatar online={!off} />
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    'block text-[11px] font-semibold',
+                    off ? 'text-[var(--color-ink-3)]' : 'text-[var(--color-ink)]',
+                  )}
+                >
+                  {m.name}
+                </span>
+                {/* Derived every render from the shift clock and the orders
+                    pointing at this person, so it cannot go on describing a job
+                    that closed an hour ago — which the hand-written status
+                    string it replaced did by construction. */}
+                <span className="block truncate text-[10px] text-[var(--color-ink-3)]">
+                  {STAFF_STATUS_LABEL[status]}
+                  {job ? ` · ${WORK_ORDER_LABEL[job.type]} @ ${job.target.stationName}` : ''}
+                  {!job && ` · ${ROLE_LABEL[m.role]}`}
+                </span>
+              </span>
+              <button
+                type="button"
+                aria-label={`Call ${m.name}`}
+                disabled={off}
+                className="shrink-0 text-[var(--color-ink-3)] hover:text-[var(--color-ink)] disabled:opacity-40"
+              >
+                <Icon name="phone" size={14} />
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </Card>
   );
@@ -530,7 +662,7 @@ function ActivityLog({ entries }: { entries: ActivityEntry[] }) {
                 <span className="font-semibold text-[var(--color-ink)]">{e.who}</span> {e.verb}{' '}
                 <span className="font-medium text-[var(--color-ink)]">{e.what}</span>
               </span>
-              <span className="num mt-0.5 block text-[9px] text-[var(--color-ink-3)]">
+              <span className="num mt-0.5 block text-[10px] text-[var(--color-ink-3)]">
                 {e.time} · {e.where}
               </span>
             </span>
