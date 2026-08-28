@@ -211,6 +211,86 @@ export function shiftCapacity(
   };
 }
 
+/* ---------------------------------------------------------------------------
+   Who to send.
+--------------------------------------------------------------------------- */
+
+export interface Candidate {
+  person: Staff;
+  status: StaffStatus;
+  /** Depot to station, in km. Null when the depot has no known position. */
+  km: number | null;
+  /** Driving minutes from their depot, on the same model the trucks use. */
+  minutes: number | null;
+  /** How many open orders they are already carrying. */
+  load: number;
+}
+
+/**
+ * Everyone on shift who can actually take this job, nearest first.
+ *
+ * Three filters, in the order they eliminate people: on shift at all, then
+ * qualified for this kind of work, then ranked. A depot mechanic is not a
+ * candidate for a dock repair however close they are parked, which is why role
+ * comes before distance rather than being a tiebreak on it.
+ *
+ * Ranking puts free people ahead of busy ones and only then sorts on travel
+ * time. The alternative — pure distance — hands every job to whoever sits
+ * nearest the middle of the city until they are carrying nine of them.
+ */
+export function candidatesFor(
+  type: WorkOrderType,
+  roster: Staff[],
+  orders: WorkOrder[],
+  opts: {
+    date: Date;
+    /** Where the work is. Null skips the distance ranking entirely. */
+    station: { lat: number; lon: number } | null;
+    depots: Record<string, { lat: number; lon: number }>;
+    distanceKm: (aLat: number, aLon: number, bLat: number, bLon: number) => number;
+    travelMinutes: (km: number) => number;
+  },
+): Candidate[] {
+  const { date, station, depots, distanceKm, travelMinutes } = opts;
+
+  const eligible = roster.filter(
+    (p) => isOnShift(p, date) && ROLE_HANDLES[p.role].includes(type),
+  );
+
+  const rows: Candidate[] = eligible.map((person) => {
+    const base = depots[person.depot];
+    const km =
+      base && station ? distanceKm(base.lat, base.lon, station.lat, station.lon) : null;
+
+    return {
+      person,
+      status: statusOf(person, orders, date),
+      km,
+      minutes: km === null ? null : travelMinutes(km),
+      load: orders.filter((o) => o.assignee === person.id && isOpen(o)).length,
+    };
+  });
+
+  const busyness: Record<StaffStatus, number> = {
+    available: 0,
+    assigned: 1,
+    'on-site': 2,
+    'off-shift': 3,
+  };
+
+  return rows.sort((a, b) => {
+    const byFree = busyness[a.status] - busyness[b.status];
+    if (byFree !== 0) return byFree;
+    if (a.load !== b.load) return a.load - b.load;
+    // Unknown distance sorts last rather than first: a null is missing
+    // information, not a zero-minute drive.
+    const am = a.minutes ?? Number.POSITIVE_INFINITY;
+    const bm = b.minutes ?? Number.POSITIVE_INFINITY;
+    if (am !== bm) return am - bm;
+    return a.person.name.localeCompare(b.person.name);
+  });
+}
+
 /**
  * The one-sentence answer, in the shift's own terms.
  *

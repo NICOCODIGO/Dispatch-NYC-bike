@@ -53,6 +53,14 @@ export interface MechRequest {
   /** The station's urgency at the moment of escalation, where the caller knows it. */
   priority?: number | null;
   stationId?: string | null;
+  /**
+   * Set when the order is about one machine rather than the whole site.
+   *
+   * The `key` still carries the uniqueness, so a bike and its station can each
+   * hold an open order without one blocking the other — a dead dock and a bike
+   * with a flat tyre at the same address are two jobs.
+   */
+  bikeId?: string;
 }
 
 /* ---------------------------------------------------------------------------
@@ -170,6 +178,7 @@ export const useConsole = create<ConsoleState>((set, get) => ({
         stationId: req.stationId ?? null,
         stationName: req.name,
         borough: req.region,
+        ...(req.bikeId ? { bikeId: req.bikeId } : {}),
       },
       // Carried from the caller where it knows, rather than stamped CRITICAL
       // for everything the way the old ticket was. A screen that marks all its

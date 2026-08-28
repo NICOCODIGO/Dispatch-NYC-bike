@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../ui/Icon';
-import { Button } from '../ui/primitives';
+import { Button, TonePill } from '../ui/primitives';
 import { ProvenancePill } from '../ui/ProvenancePill';
 import { TONE } from '../ui/tone';
 import { CONSTANT_GROUPS, SCORING_CONSTANTS } from '../content/constants';
+import {
+  PROVENANCE_GROUPS,
+  SOURCE_LABEL,
+  SOURCE_MEANING,
+  SOURCE_TONE,
+  sourceTally,
+} from '../content/provenance';
 import { NEEDS_TRUCK_THRESHOLD } from '../model/score';
 import { useDispatch } from '../store/useDispatch';
 import { rebalanceDemand } from '../data/insights';
@@ -134,7 +141,8 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
               Scoring method &amp; assumptions
             </h2>
             <p className="mt-0.5 text-[11px] text-[var(--color-ink-2)]">
-              Every constant behind the score, where it came from, and what moving it does.
+              Every constant behind the score, where it came from, and what moving it does — and at
+              the bottom, which numbers on this console are real.
             </p>
           </div>
           <button
@@ -319,6 +327,8 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
             measurements requires the same thing: enough dispatch outcomes to see which line
             actually predicts recovery. That is what Dispatch History is accumulating.
           </p>
+
+          <WhatIsReal />
         </div>
 
         <div className="sticky bottom-0 border-t border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
@@ -328,5 +338,111 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The seam between the live feed and everything the app models on top of it.
+ *
+ * Every invented value already carries a `Simulated` pill where it is shown,
+ * but a pill answers a local question. The one a reader forms after meeting the
+ * third one is global — *how much of this is real?* — and without somewhere to
+ * answer it the labels stop reassuring and start unsettling.
+ *
+ * Kept inside the method sheet rather than given its own screen because it is
+ * the same promise the rest of this sheet makes: here is what the numbers are,
+ * and here is how much to trust them. A separate page would be a disclaimer;
+ * next to the constants it is part of the argument.
+ */
+function WhatIsReal() {
+  const [open, setOpen] = useState(false);
+  const tally = sourceTally();
+
+  return (
+    <section className="mt-4 rounded-lg border border-[var(--color-line)]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-start gap-2 px-3 py-2.5 text-left"
+      >
+        <Icon name={open ? 'chevron-down' : 'chevron-right'} size={13} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12px] font-semibold text-[var(--color-ink)]">
+            What is real, and what this app models
+          </span>
+          <span className="mt-0.5 block text-[10px] leading-relaxed text-[var(--color-ink-2)]">
+            GBFS carries station counts and nothing else. Individual bikes, batteries, dock faults,
+            staff and work orders are all modelled — {tally.find((t) => t.source === 'simulated')?.count ?? 0}{' '}
+            of them sized by a real count, {tally.find((t) => t.source === 'fixture')?.count ?? 0}{' '}
+            anchored to nothing at all.
+          </span>
+        </span>
+      </button>
+
+      {open && (
+        <div className="fade-in border-t border-[var(--color-line)] px-3 py-3">
+          {/* The legend first: five words that make the table underneath
+              readable without a second pass. */}
+          <ul className="flex flex-col gap-1.5">
+            {tally.map(({ source, count }) => (
+              <li key={source} className="flex items-baseline gap-2 text-[10px] leading-relaxed">
+                <span className="shrink-0">
+                  <TonePill label={SOURCE_LABEL[source]} tone={SOURCE_TONE[source]} />
+                </span>
+                <span className="num shrink-0 text-[var(--color-ink-3)]">{count}</span>
+                <span className="text-[var(--color-ink-2)]">{SOURCE_MEANING[source]}</span>
+              </li>
+            ))}
+          </ul>
+
+          {PROVENANCE_GROUPS.map((group) => (
+            <section key={group.key} className="mt-3.5">
+              <h4 className="eyebrow text-[10px]">{group.label}</h4>
+              <p className="mt-0.5 text-[10px] text-[var(--color-ink-3)]">{group.note}</p>
+
+              <ul className="mt-1.5">
+                {group.fields.map((f) => (
+                  <li
+                    key={f.label}
+                    className="border-b border-[var(--color-line-soft)] py-2 last:border-b-0"
+                  >
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[11px] font-medium text-[var(--color-ink)]">
+                        {f.label}
+                      </span>
+                      <TonePill label={SOURCE_LABEL[f.source]} tone={SOURCE_TONE[f.source]} />
+                    </span>
+                    <span className="mt-1 block text-[10px] leading-relaxed text-[var(--color-ink-2)]">
+                      {f.detail}
+                    </span>
+                    {/* The anchor is the whole defence of the simulated rows.
+                        Printing it turns "we made this up" into "we made this
+                        up to exactly this size, and here is whose number that
+                        is". */}
+                    {f.anchor && (
+                      <span className="mt-1 flex items-center gap-1 text-[10px] text-[var(--color-ink-3)]">
+                        <Icon name="check" size={10} />
+                        Sized by <span className="font-medium">{f.anchor}</span> from the feed
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+
+          <p className="mt-3.5 rounded-lg bg-[var(--color-sunken)] p-3 text-[10px] leading-relaxed text-[var(--color-ink-3)]">
+            The rule every simulated field follows: <strong>the invented set is sized by a real
+            count.</strong> A station reporting twelve bikes available and two disabled produces
+            fourteen frames, three of them electric, two of them faulted — the identities and the
+            faults are fiction, the numbers are the operator’s. Which means the modelled layer can
+            fill in what GBFS leaves out without ever contradicting what GBFS says.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }

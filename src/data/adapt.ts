@@ -50,7 +50,7 @@ const CATEGORY_STATUS: Record<StationCategory, StatusLabel> = {
  * Warm means nobody can rent, cool means nobody can return. Mapping both
  * warnings onto one amber would put opposite problems in the same color.
  */
-const CATEGORY_TONE: Record<StationCategory, Tone> = {
+export const CATEGORY_TONE: Record<StationCategory, Tone> = {
   not_installed: 'mute',
   unusable: 'ink',
   outage: 'ink',

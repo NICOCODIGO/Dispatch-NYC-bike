@@ -9,6 +9,7 @@ import {
   shiftCapacity,
   statusOf,
   verdict,
+  candidatesFor,
 } from './roster';
 
 const at = (hour: number) => new Date(2026, 7, 27, hour, 30, 0);
@@ -212,5 +213,86 @@ describe('verdict', () => {
     });
     expect(cap.drivers).toBe(0);
     expect(verdict(cap)).toMatch(/no rebalance drivers on shift/i);
+  });
+});
+
+describe('candidatesFor', () => {
+  const km = (aLat: number, aLon: number, bLat: number, bLon: number) =>
+    Math.abs(aLat - bLat) + Math.abs(aLon - bLon);
+  const mins = (d: number) => Math.max(1, Math.round(d * 100));
+  const depots = { Near: { lat: 0, lon: 0 }, Far: { lat: 5, lon: 5 } };
+  const station = { lat: 0, lon: 0 };
+  const opts = { date: at(9), station, depots, distanceKm: km, travelMinutes: mins };
+
+  it('excludes anyone off shift', () => {
+    const roster = [
+      person({ id: 'on', role: 'field-mechanic', shift: 'am', depot: 'Near' }),
+      person({ id: 'off', role: 'field-mechanic', shift: 'night', depot: 'Near' }),
+    ];
+    const out = candidatesFor('dock-repair', roster, [], opts);
+    expect(out.map((c) => c.person.id)).toEqual(['on']);
+  });
+
+  // Role gates before distance: a depot mechanic parked on top of the station
+  // still cannot repair a dock.
+  it('excludes roles that cannot do the work, however close they are', () => {
+    const roster = [
+      person({ id: 'depot', role: 'depot-mechanic', shift: 'am', depot: 'Near' }),
+      person({ id: 'field', role: 'field-mechanic', shift: 'am', depot: 'Far' }),
+    ];
+    const out = candidatesFor('dock-repair', roster, [], opts);
+    expect(out.map((c) => c.person.id)).toEqual(['field']);
+  });
+
+  it('puts a free person ahead of a busier one even if further away', () => {
+    const roster = [
+      person({ id: 'busy', role: 'field-mechanic', shift: 'am', depot: 'Near' }),
+      person({ id: 'free', role: 'field-mechanic', shift: 'am', depot: 'Far' }),
+    ];
+    const orders = [order({ assignee: 'busy', status: 'assigned' })];
+    const out = candidatesFor('dock-repair', roster, orders, opts);
+    expect(out[0]?.person.id).toBe('free');
+  });
+
+  it('sorts equally free people by travel time', () => {
+    const roster = [
+      person({ id: 'far', role: 'field-mechanic', shift: 'am', depot: 'Far' }),
+      person({ id: 'near', role: 'field-mechanic', shift: 'am', depot: 'Near' }),
+    ];
+    const out = candidatesFor('dock-repair', roster, [], opts);
+    expect(out.map((c) => c.person.id)).toEqual(['near', 'far']);
+    expect(out[0]?.minutes).toBeLessThan(out[1]!.minutes!);
+  });
+
+  // A null is missing information, not a zero-minute drive.
+  it('sorts an unknown depot last rather than first', () => {
+    const roster = [
+      person({ id: 'nowhere', role: 'field-mechanic', shift: 'am', depot: 'Unmapped' }),
+      person({ id: 'far', role: 'field-mechanic', shift: 'am', depot: 'Far' }),
+    ];
+    const out = candidatesFor('dock-repair', roster, [], opts);
+    expect(out.map((c) => c.person.id)).toEqual(['far', 'nowhere']);
+    expect(out[1]?.minutes).toBeNull();
+  });
+
+  it('reports no distance when the station has no position', () => {
+    const roster = [person({ id: 'a', role: 'field-mechanic', shift: 'am', depot: 'Near' })];
+    const out = candidatesFor('dock-repair', roster, [], { ...opts, station: null });
+    expect(out[0]?.km).toBeNull();
+    expect(out[0]?.minutes).toBeNull();
+  });
+
+  it('counts only open orders as load', () => {
+    const roster = [person({ id: 'a', role: 'field-mechanic', shift: 'am', depot: 'Near' })];
+    const orders = [
+      order({ assignee: 'a', status: 'assigned' }),
+      order({ assignee: 'a', status: 'done', closedAt: Date.now() }),
+    ];
+    expect(candidatesFor('dock-repair', roster, orders, opts)[0]?.load).toBe(1);
+  });
+
+  it('returns nobody when no role on shift covers the work', () => {
+    const roster = [person({ id: 'd', role: 'rebalance-driver', shift: 'am', depot: 'Near' })];
+    expect(candidatesFor('dock-repair', roster, [], opts)).toEqual([]);
   });
 });

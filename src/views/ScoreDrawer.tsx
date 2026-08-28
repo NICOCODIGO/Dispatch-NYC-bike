@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DispatchComposer } from './DispatchComposer';
 import { Icon } from '../ui/Icon';
-import { Bar, Button, ScoreBadge, StatusPill } from '../ui/primitives';
+import { Bar, Button, ScoreBadge } from '../ui/primitives';
 import { ProvenancePill } from '../ui/ProvenancePill';
-import { CONDITION_LABEL, LOW_CHARGE, bikesAt, summarize } from '../sim/fleet';
+import { StationAssets } from './StationAssets';
+import {
+  LOW_CHARGE,
+  bikesAt,
+  docksAt,
+  statusFromRow,
+  summarize,
+  summarizeDocks,
+} from '../sim/fleet';
 import { TONE, type Tone } from '../ui/tone';
 import {
   CAPACITY_WEIGHT_CAP,
@@ -13,6 +21,7 @@ import {
   STALENESS_GRACE_MINUTES,
   type ScoreBreakdown,
 } from '../model/score';
+import { CATEGORY_TONE } from '../data/adapt';
 import { verdictFor } from '../data/verdict';
 import { laneOf } from '../model/triage';
 import { formatAgo, formatClock, formatReportedAge } from '../lib/time';
@@ -34,6 +43,8 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const factors = factorsFor(row);
   const [composing, setComposing] = useState(false);
+  /** Which asset list to open, or null for closed. */
+  const [assets, setAssets] = useState<'bikes' | 'docks' | null>(null);
 
   // The footer used to ask only "is this mechanical?", so a healthy station
   // clicked on the map got a full-width black Dispatch Truck Here directly
@@ -128,31 +139,52 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
             {row.borough} · <span className="num">{row.docks}</span> docks
           </p>
 
-          <div className="mt-3.5 flex items-center gap-3 rounded-lg border border-[var(--color-line)] bg-[var(--color-sunken)] p-3">
-            <ScoreBadge score={row.score} size="lg" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-[var(--color-ink-2)]">
-                Station fill level
-              </p>
-              <div className="mt-1.5">
-                <Bar value={row.fill} tone={row.fillTone} height={6} />
+          {/* The scale, not a second fill bar.
+              This card used to draw fill again, three lines under the fill bar
+              already in the row you clicked to get here, while the number in the
+              badge beside it went unexplained. Swapping in the urgency scale
+              means the headline figure is located the moment you arrive, and the
+              fill reading stays as the text underneath where it is still worth
+              having. */}
+          <div className="mt-3.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-sunken)] p-3">
+            <div className="flex items-center gap-3">
+              <ScoreBadge score={row.score} size="lg" />
+              <div className="min-w-0 flex-1">
+                {row.score === null ? (
+                  <>
+                    <p className="text-[11px] font-medium text-[var(--color-ink-2)]">
+                      Not scored
+                    </p>
+                    <div className="mt-1.5">
+                      <Bar value={row.fill} tone={row.fillTone} height={6} />
+                    </div>
+                  </>
+                ) : (
+                  <ScoreBand score={row.score} compact />
+                )}
               </div>
-              <p className="num mt-1.5 text-[10px] text-[var(--color-ink-3)]">
-                {pct === null ? 'unknown' : `${pct}% full`} · {row.bikes === null ? '—' : row.bikes}{' '}
-                bikes / {row.openDocks ?? row.docks} open
-              </p>
             </div>
+
+            <p className="num mt-2.5 text-[10px] text-[var(--color-ink-3)]">
+              {pct === null ? 'fill unknown' : `${pct}% full`} ·{' '}
+              {row.bikes === null ? '—' : row.bikes} bikes / {row.openDocks ?? row.docks} open
+            </p>
           </div>
 
           {row.breakdown ? (
             <>
               <Readiness row={row} />
+              {/* Above the receipt, not below it. What is physically at the
+                  station is the most concrete thing in this drawer, and it was
+                  sitting under two sections of explanation — so the tangible
+                  answer arrived last and only if you scrolled for it.
+                  Readiness stays first because it is the decision. */}
+              <OnTheRack row={row} onOpenAssets={setAssets} />
               <LiveReceipt
                 breakdown={row.breakdown}
                 duration={row.duration ?? null}
                 raw={row.raw}
               />
-              <OnTheRack row={row} />
             </>
           ) : (
             factors.length > 0 && (
@@ -189,7 +221,7 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
                   </span>
                 </div>
                 <p className="mt-2 text-[10px] text-[var(--color-ink-3)] italic">
-                  Fixture station — these contributions are illustrative.
+                  Fixture station. These contributions are illustrative.
                 </p>
               </>
             )
@@ -202,11 +234,18 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
 
         {composing && <DispatchComposer row={row} onClose={() => setComposing(false)} />}
 
+        {/* Layered over the drawer rather than replacing it, so closing the
+            list puts you back exactly where you were instead of at the top of
+            a rebuilt panel. */}
+        {assets && (
+          <StationAssets row={row} initial={assets} onClose={() => setAssets(null)} />
+        )}
+
         <div className="sticky bottom-0 flex flex-col gap-1 border-t border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
           {/* Nothing to dispatch to a station a truck cannot fix. */}
           {row.action?.kind === 'mechanic' ? (
             <Button variant="outline" icon="wrench" className="w-full" onClick={onClose}>
-              Needs a mechanic — see Maintenance Ops
+              Needs a mechanic. Open Maintenance Ops
             </Button>
           ) : unwanted ? (
             /* Demoted, not removed. The board's opinion is that this trip is
@@ -222,11 +261,11 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
               onClick={() => setComposing(true)}
               title={
                 verdict === 'unverified'
-                  ? 'This station has not reported recently — you would be dispatching on counts nobody can vouch for.'
+                  ? 'This station has not reported recently. You would be dispatching on counts nobody can vouch for.'
                   : 'This station is below the dispatch threshold. The board does not think this trip is worth a run.'
               }
             >
-              {verdict === 'unverified' ? 'Dispatch anyway — counts unverified' : 'Dispatch anyway'}
+              {verdict === 'unverified' ? 'Dispatch anyway, counts unverified' : 'Dispatch anyway'}
             </Button>
           ) : (
             <Button
@@ -302,15 +341,39 @@ function Measured({
       <p className="mt-2 text-[10px] leading-relaxed text-[var(--color-ink-2)]">
         {fill.bikes} of {raw.usableSlots} working slots hold a bike
         {fill.ratio !== null && <> — {Math.round(fill.ratio * 100)}% full</>}.
-        {nameplateDisagrees && (
+        {/* Why the denominator is what it is. This lived in two places: here as
+            "the nameplate disagrees", and again at the bottom of the drawer as
+            "N of M docks out of service" — two framings of one fact, computed
+            from different fields, so they could print different dock counts for
+            the same station. Worse, the more precise of the two sat inside the
+            section labelled Simulated, which made `num_docks_disabled` — a real
+            number the operator publishes — look invented.
+
+            It is said once, here, where the feed's own figures are. */}
+        {raw.docksDisabled === 0 && nameplateDisagrees && (
           <>
             {' '}
-            The nameplate claims {raw.capacity} docks, so {Math.abs(raw.capacity - raw.usableSlots)}{' '}
+            The nameplate claims {raw.capacity} docks, so{' '}
+            {Math.abs(raw.capacity - raw.usableSlots)}{' '}
             {Math.abs(raw.capacity - raw.usableSlots) === 1 ? 'is' : 'are'} not reporting as usable
-            — fill is measured against what works, not what was installed.
+            so fill is measured against what works, not what was installed.
           </>
         )}
       </p>
+
+      {/* Lifted out of the paragraph above. Broken hardware is the one thing
+          here that changes which vehicle you send, so it should not have to be
+          found mid-sentence. */}
+      {raw.docksDisabled > 0 && (
+        <Callout tone="empty" label="What the feed found">
+          <strong className="font-semibold text-[var(--color-ink)]">
+            {raw.docksDisabled} dock{raw.docksDisabled === 1 ? ' is' : 's are'} out of service
+          </strong>
+          , so fill is measured against the {raw.usableSlots} that work rather than the{' '}
+          {raw.capacity} on the nameplate. A station can read as full because it is full, or
+          because most of it is broken, and only one of those is a truck job.
+        </Callout>
+      )}
 
       <button
         type="button"
@@ -408,145 +471,122 @@ function Raw({
  * the station status: the same counts always produce the same rack, so there is
  * nothing to keep in state.
  */
-function OnTheRack({ row }: { row: StationRow }) {
-  const [open, setOpen] = useState(false);
-  const raw = row.raw;
+function OnTheRack({ row, onOpenAssets }: { row: StationRow; onOpenAssets: (tab: 'bikes' | 'docks') => void }) {
+  const status = useMemo(() => statusFromRow(row), [row]);
+  const bikes = useMemo(() => (status ? bikesAt(status, Date.now()) : []), [status]);
+  const docks = useMemo(() => (status ? docksAt(status) : []), [status]);
+  const fleet = useMemo(() => summarize(bikes, row.id), [bikes, row.id]);
+  const dockStats = useMemo(() => summarizeDocks(docks), [docks]);
 
-  const bikes = useMemo(() => {
-    // `row.bikes` is null exactly when the station is unverified — the lane
-    // whose counts the app has already decided not to trust. Elaborating a rack
-    // of individual frames on top of numbers the board refuses to rank on would
-    // be the one place this panel could do real harm.
-    if (!raw || row.bikes === null) return [];
-
-    return bikesAt(
-      {
-        stationId: raw.stationId,
-        bikesAvailable: row.bikes,
-        ebikesAvailable: raw.ebikesAvailable,
-        docksAvailable: row.openDocks ?? 0,
-        bikesDisabled: raw.bikesDisabled,
-        docksDisabled: raw.docksDisabled,
-        isInstalled: raw.isInstalled,
-        isRenting: raw.isRenting,
-        isReturning: raw.isReturning,
-        lastReportedMs: raw.lastReportedMs,
-      },
-      // One clock for the whole panel, and one taken per rebuild rather than
-      // per render — bikes on a single screen must not disagree about how long
-      // they have been standing, and the charges should move at the 60s poll,
-      // not on every keystroke that rerenders the drawer.
-      Date.now(),
-    );
-  }, [raw, row.bikes, row.openDocks]);
-
-  const fleet = useMemo(() => summarize(bikes, raw?.stationId ?? ''), [bikes, raw?.stationId]);
-  if (!raw || row.bikes === null) return null;
+  if (!status) return null;
 
   return (
-    <section className="mt-5">
+    <section className="mt-4">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h4 className="eyebrow">On the rack</h4>
         <ProvenancePill
           provenance="simulated"
-          detail="GBFS carries counts, never individual bikes. Frame numbers, charge and condition are modelled — but the number of bikes, how many are electric and how many are broken all come from the live feed, so this list can never disagree with the counts above it."
+          detail="GBFS carries counts, never individual bikes. Frame numbers, charge and fault reasons are modelled. The number of bikes, how many are electric and how many are broken all come from the live feed."
         />
       </div>
 
-      {bikes.length === 0 ? (
-        <p className="mt-2 text-[11px] text-[var(--color-ink-2)]">
-          Nothing on the rack — the station reports no bikes available.
-        </p>
-      ) : (
-        <>
-          <p className="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-2)]">
-            <span className="num font-semibold text-[var(--color-ink)]">{fleet.electric}</span>{' '}
-            electric ·{' '}
-            <span className="num font-semibold text-[var(--color-ink)]">{fleet.classic}</span>{' '}
-            classic
-            {fleet.meanCharge !== null && (
-              <>
-                {' '}
-                · mean charge{' '}
-                <span className="num font-semibold text-[var(--color-ink)]">
-                  {fleet.meanCharge}%
-                </span>
-              </>
-            )}
-            {fleet.gridConnected && (
-              <>
-                {' '}
-                ·{' '}
-                <span style={{ color: TONE.ok.fg }}>
-                  <Icon name="plug-zap" size={10} /> docks charge
-                </span>
-              </>
-            )}
-          </p>
+      {/* Two tiles, not two lists. The lists live in their own panel now: at a
+          large station they ran to sixty bikes and a hundred docks, and
+          unfolding them here buried every other section under a thousand pixels
+          of scroll. What belongs in the drawer is the count and a way in. */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <AssetTile
+          label="Bikes present"
+          value={fleet.total}
+          tone={fleet.outOfService > 0 ? 'warn' : 'ink'}
+          foot={
+            fleet.total === 0
+              ? 'nothing to collect'
+              : `${fleet.electric} electric · ${fleet.flagged + fleet.outOfService} faulted`
+          }
+          onClick={() => onOpenAssets('bikes')}
+          disabled={fleet.total === 0}
+        />
+        <AssetTile
+          label="Docks out"
+          value={dockStats.dead}
+          tone={dockStats.dead > 0 ? 'empty' : 'ok'}
+          foot={
+            dockStats.dead === 0
+              ? `all ${dockStats.total} reporting`
+              : `of ${dockStats.total} · ${dockStats.siteFaults} look site-wide`
+          }
+          onClick={() => onOpenAssets('docks')}
+          disabled={dockStats.dead === 0}
+        />
+      </div>
 
+      {fleet.meanCharge !== null && (
+        <p className="mt-2 text-[10.5px] text-[var(--color-ink-2)]">
+          Mean charge{' '}
+          <span className="num font-semibold text-[var(--color-ink)]">{fleet.meanCharge}%</span>
           {fleet.lowCharge > 0 && (
-            <p className="mt-1 text-[11px]" style={{ color: TONE.warn.fg }}>
-              {fleet.lowCharge} e-bike{fleet.lowCharge === 1 ? '' : 's'} under {LOW_CHARGE}% — a
-              swap run, not a rebalance.
-            </p>
+            <span style={{ color: TONE.warn.fg }}>
+              {' '}
+              · {fleet.lowCharge} under {LOW_CHARGE}%, a swap run rather than a rebalance
+            </span>
           )}
-
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="mt-2 inline-flex cursor-pointer items-center gap-1 text-[10px] text-[var(--color-ink-3)] underline decoration-dotted underline-offset-2 hover:text-[var(--color-ink)]"
-          >
-            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={11} />
-            {open ? 'Hide bikes' : `Show all ${bikes.length}`}
-          </button>
-
-          {open && (
-            <ul className="fade-in mt-2 flex flex-col rounded-lg border border-[var(--color-line)] bg-[var(--color-sunken)] px-3 py-1">
-              {bikes.map((b, i) => (
-                <li
-                  key={b.id}
-                  className={cn(
-                    'flex items-center gap-2 py-1.5 text-[10px]',
-                    i < bikes.length - 1 && 'border-b border-[var(--color-line-soft)]',
-                  )}
-                >
-                  <span className="num w-[26px] shrink-0 text-[var(--color-ink-3)]">
-                    {b.dock}
-                  </span>
-                  <span className="num w-[54px] shrink-0 font-semibold text-[var(--color-ink)]">
-                    {b.id}
-                  </span>
-                  <span className="w-[52px] shrink-0 text-[var(--color-ink-2)]">
-                    {b.kind === 'electric' ? 'E-bike' : 'Classic'}
-                  </span>
-                  <span className="w-[46px] shrink-0">
-                    {b.charge === null ? (
-                      <span className="text-[var(--color-ink-3)]">—</span>
-                    ) : (
-                      <span
-                        className="num font-semibold"
-                        style={{ color: b.charge < LOW_CHARGE ? TONE.warn.fg : TONE.ok.fg }}
-                      >
-                        {b.charge}%
-                      </span>
-                    )}
-                  </span>
-                  <span className="ml-auto text-right">
-                    {b.condition === 'ok' ? (
-                      <span className="text-[var(--color-ink-3)]">
-                        {CONDITION_LABEL[b.condition]}
-                      </span>
-                    ) : (
-                      <StatusPill label={CONDITION_LABEL[b.condition]} />
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          {fleet.gridConnected && (
+            <span style={{ color: TONE.ok.fg }}> · docks charge what is parked in them</span>
           )}
-        </>
+        </p>
+      )}
+
+      {dockStats.siteFaults > 0 && (
+        <Callout tone="warn" label="Fault pattern">
+          <strong className="font-semibold text-[var(--color-ink)]">
+            {dockStats.siteFaults} of the dead docks
+          </strong>{' '}
+          read as power or comms rather than mechanical. That pattern is a site visit, not a dock
+          repair, and if it spreads the station stops reporting altogether.
+        </Callout>
       )}
     </section>
+  );
+}
+
+/** A count with a way into the detail behind it. */
+function AssetTile({
+  label,
+  value,
+  foot,
+  tone,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  value: number;
+  foot: string;
+  tone: Tone;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={cn(
+        'rounded-lg border border-[var(--color-line)] px-3 py-2 text-left transition-colors',
+        disabled
+          ? 'cursor-default bg-[var(--color-sunken)]'
+          : 'cursor-pointer bg-[var(--color-surface)] hover:border-[var(--color-ink-3)]',
+      )}
+    >
+      <span className="eyebrow text-[10px]">{label}</span>
+      <span className="mt-1 flex items-baseline justify-between gap-2">
+        <span className="num text-[19px] leading-none font-semibold" style={{ color: TONE[tone].fg }}>
+          {value}
+        </span>
+        {!disabled && <Icon name="chevron-right" size={13} />}
+      </span>
+      <span className="mt-1 block text-[10px] leading-snug text-[var(--color-ink-3)]">{foot}</span>
+    </button>
   );
 }
 
@@ -633,46 +673,62 @@ function Readiness({ row }: { row: StationRow }) {
 
   // Ordered worst-first: the first failure is the one that decides the answer,
   // which is what lets the headline name a blocker instead of counting them.
+  /*
+   * Each check carries three separate strings, because they are read in three
+   * different places and collapsing them is what made this panel repeat itself.
+   *
+   * `detail` explains the check where it sits in the list. `blocker` is a short
+   * noun phrase for naming it in the headline. `consequence` is what the reader
+   * should do about it, and it is the only one that belongs in the subhead —
+   * the previous version put `blocker` in both the headline and the line under
+   * it, so a blocked station announced "Dispatchable, but it is bigger than one
+   * load" and then immediately explained that it was bigger than one load.
+   */
   const checks = [
     {
       ok: lane === 'truck',
-      blocker: 'a truck cannot fix this',
+      blocker: 'a truck cannot fix it',
+      consequence: 'Maintenance owns this one. Moving bikes will not change it.',
       label: 'A truck can fix it',
       detail:
         lane === 'truck'
-          ? 'Distribution problem — moving bikes resolves it.'
-          : 'Mechanical or unreadable. A truck changes nothing here.',
+          ? 'This is a distribution problem. Moving bikes resolves it.'
+          : 'Mechanical or unreadable, so moving bikes changes nothing.',
     },
     {
       ok: fresh,
       blocker: 'the reading is stale',
+      consequence: 'Worth confirming the counts before committing a vehicle.',
       label: 'Reading is current',
       detail: fresh
         ? `Reported ${formatReportedAge(row.breakdown?.staleness.ageMinutes ?? null)}, inside the ${STALENESS_GRACE_MINUTES}-minute grace window.`
-        : `Reported ${formatReportedAge(row.breakdown?.staleness.ageMinutes ?? null)} — old enough that the counts may have moved since.`,
+        : `Reported ${formatReportedAge(row.breakdown?.staleness.ageMinutes ?? null)}, old enough that the counts may have moved since.`,
     },
     {
       ok: free > 0,
-      blocker: 'nothing is free to send',
+      blocker: 'no truck is free',
+      consequence: 'Sending one means pulling it off a station already waiting.',
       label: 'A truck is free',
       detail:
         free > 0
           ? `${free} idle and unassigned.`
-          : 'Nothing idle — sending one means re-tasking a vehicle already committed to another station.',
+          : 'Every vehicle is committed to another station.',
     },
     {
       ok: ordered > 0 && ordered <= biggestTruck,
-      // This check fails two opposite ways — nothing to move, or too much to
-      // move — so the phrase has to say which. It read "bigger than one load"
+      // This check fails two opposite ways, nothing to move or too much to
+      // move, so the phrase has to say which. It read "bigger than one load"
       // on mechanical stations, whose order is zero.
-      blocker: ordered === 0 ? 'there is nothing to move' : 'it is bigger than one load',
+      blocker: ordered === 0 ? 'there is nothing to move' : 'it is larger than one truckload',
+      consequence:
+        ordered === 0
+          ? 'There is no order to fill here.'
+          : `Plan two runs, or send one and accept a partial fix.`,
       label: 'Fits one load',
       detail:
         ordered === 0
           ? 'No quantity to move.'
-          : ordered <= biggestTruck
-            ? `${ordered} bikes against ${biggestTruck} of truck capacity.`
-            : `${ordered} bikes exceeds a single ${biggestTruck}-bike load — this needs two runs, or accept a partial fix.`,
+          : `${ordered} bikes against ${biggestTruck} of truck capacity.`,
     },
   ];
 
@@ -688,20 +744,27 @@ function Readiness({ row }: { row: StationRow }) {
    * actually decides the answer, and the headline says which — and, when one
    * criterion passes handsomely while another fails, says that too.
    */
+  const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
   const headline =
     blocked === 0
       ? 'Ready to dispatch'
       : blocked === 1
-        ? `Dispatchable — but ${failed[0]!.blocker}`
-        : `${blocked} reasons to weigh this first`;
+        ? `Dispatchable, with one caveat`
+        : `Not ready: ${blocked} things to weigh first`;
 
-  // When the station itself is fine and only the fleet is in the way, say so —
-  // that is a different decision from "this station is not worth serving".
+  /*
+   * The subhead advances the reader rather than restating the headline.
+   *
+   * One blocker gets its consequence, which is the actionable half. Several get
+   * named, because with more than one the reader needs to know which before any
+   * single instruction makes sense.
+   */
   const subhead =
-    blocked === 1 && checks[0]!.ok && checks[1]!.ok
-      ? `The station is not the problem — ${failed[0]!.blocker}.`
+    blocked === 1
+      ? `${sentenceCase(failed[0]!.blocker)}. ${failed[0]!.consequence}`
       : blocked > 1
-        ? `${failed.map((f) => f.blocker).join(', and ')}.`
+        ? `${sentenceCase(failed.map((f) => f.blocker).join(', and '))}.`
         : null;
 
   return (
@@ -709,18 +772,23 @@ function Readiness({ row }: { row: StationRow }) {
       className="mt-4 rounded-lg border p-3"
       style={{ borderColor: TONE[tone].line, backgroundColor: TONE[tone].bg }}
     >
-      <div className="flex items-center gap-2">
-        <Icon
-          name={blocked === 0 ? 'truck' : 'alert-triangle'}
-          size={13}
-          style={{ color: TONE[tone].fg }}
-        />
-        <h4 className="text-[11.5px] font-semibold text-[var(--color-ink)]">{headline}</h4>
+      {/* Icon and text are siblings in a flex row, so the subhead hangs under
+          the headline rather than under the icon. It previously sat outside
+          this row entirely and started at the card's left edge, which read as a
+          separate paragraph rather than as the headline's own second line. */}
+      <div className="flex items-start gap-2">
+        <span className="mt-[1px] shrink-0" style={{ color: TONE[tone].fg }}>
+          <Icon name={blocked === 0 ? 'truck' : 'alert-triangle'} size={13} />
+        </span>
+        <div className="min-w-0">
+          <h4 className="text-[11.5px] leading-snug font-semibold text-[var(--color-ink)]">
+            {headline}
+          </h4>
+          {subhead && (
+            <p className="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-2)]">{subhead}</p>
+          )}
+        </div>
       </div>
-
-      {subhead && (
-        <p className="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-2)]">{subhead}</p>
-      )}
 
       <ul className="mt-2 flex flex-col gap-1.5">
         {checks.map((c) => (
@@ -760,6 +828,16 @@ function LiveReceipt({
   const adjusted = applyDuration(breakdown, duration ?? undefined);
   const durationPts = duration?.confident ? duration.points : 0;
 
+  // Bars are scaled against the largest term on *this* receipt, not against
+  // 100. The question they answer is "which of these moved the score", and
+  // against a fixed 100 every modifier would be a stub beside the base.
+  const widest = Math.max(
+    Math.abs(breakdown.base),
+    Math.abs(capacity.contribution),
+    Math.abs(staleness.penalty),
+    Math.abs(durationPts),
+  );
+
   if (!breakdown.scored) {
     return (
       <p className="mt-5 rounded-lg border border-[var(--color-line)] bg-[var(--color-sunken)] p-3 text-[11px] leading-relaxed text-[var(--color-ink-2)]">
@@ -785,6 +863,8 @@ function LiveReceipt({
           sub={CATEGORY_LABEL[breakdown.category]}
           detail={breakdown.baseRule}
           value={breakdown.base}
+          scale={widest}
+          tone={CATEGORY_TONE[breakdown.category]}
         />
         <Line
           label="Capacity weight"
@@ -795,6 +875,8 @@ function LiveReceipt({
               : `Smaller than the typical station (${capacity.capacity} docks vs ${capacity.p90Capacity}), so the same failure strands fewer riders.`
           }
           value={capacity.contribution}
+          scale={widest}
+          tone="flood"
           signed
         />
         <Line
@@ -812,6 +894,8 @@ function LiveReceipt({
                 : `Past the ${STALENESS_GRACE_MINUTES}-minute grace window. Staleness adds uncertainty, not severity — a station we cannot see might be fine, but it is worth a look.`
           }
           value={staleness.penalty}
+          scale={widest}
+          tone="mute"
           signed
         />
 
@@ -821,6 +905,8 @@ function LiveReceipt({
             sub={formatAgo(duration.minutes * 60_000)}
             detail={`Failing since ${formatClock(duration.failingSince).slice(0, 5)}. Each hour above the threshold adds ${DURATION_PER_HOUR} points, capped at +${DURATION_CAP} — a station nobody has served in hours is a worse failure than one that just tipped over.`}
             value={durationPts}
+            scale={widest}
+            tone="warn"
             signed
           />
         )}
@@ -832,11 +918,15 @@ function LiveReceipt({
             <span className="text-[11px] font-normal text-[var(--color-ink-3)]"> / 100</span>
           </dd>
         </div>
-        <p className="num mt-1.5 text-right text-[10px] text-[var(--color-ink-3)]">
+        <p className="num mt-1 text-right text-[10px] text-[var(--color-ink-3)]">
           {breakdown.weighted} + {staleness.penalty}
-          {durationPts > 0 && ` + ${durationPts}`}, rounded and clamped to 0–100
+          {durationPts > 0 && ` + ${durationPts}`}, rounded
         </p>
       </dl>
+
+      {/* The scale is drawn once, at the top of the drawer beside the badge.
+          Repeating it under the arithmetic would be the third statement of the
+          same fact, which is what this section was rebuilt to stop doing. */}
 
       <Verdict breakdown={breakdown} score={adjusted.score} />
     </>
@@ -886,45 +976,170 @@ function Verdict({ breakdown, score }: { breakdown: ScoreBreakdown; score: numbe
     );
   }
 
+  // critical / dispatch / below are the three bands the scale draws directly.
+  // Saying them again in a paragraph was the third restatement of one fact.
+  return null;
+}
+
+/**
+ * Where this score sits on the scale, as a picture.
+ *
+ * The number and its two thresholds used to be three separate sentences: the
+ * total, an arithmetic line, and a paragraph explaining which side of 55 and 70
+ * it fell on. All three said the same thing in different notation, and the
+ * reader had to hold two constants in their head to decode any of it.
+ *
+ * Drawn instead, the bands are self-explaining: the segments are proportional
+ * to their real ranges, so the eye lands on the marker and reads the verdict
+ * off the colour it is standing in. One sentence is then enough to say what to
+ * do about it.
+ */
+function ScoreBand({ score, compact = false }: { score: number; compact?: boolean }) {
+  const bands = [
+    { to: NEEDS_TRUCK_THRESHOLD, label: 'Drifting', tone: 'ok' as Tone },
+    { to: CRITICAL_THRESHOLD, label: 'Worth a trip', tone: 'warn' as Tone },
+    { to: 100, label: 'Critical', tone: 'empty' as Tone },
+  ];
+
+  const current =
+    score >= CRITICAL_THRESHOLD ? 2 : score >= NEEDS_TRUCK_THRESHOLD ? 1 : 0;
+  const here = bands[current]!;
+
   return (
-    <p className="mt-3 text-[10px] leading-relaxed text-[var(--color-ink-2)]">
-      {verdict === 'critical' ? (
-        <>
-          At or above the {CRITICAL_THRESHOLD}-point critical line —{' '}
-          <strong className="font-semibold text-[var(--color-ink)]">
-            this one goes ahead of the rest of the queue.
-          </strong>{' '}
-          Everything from {NEEDS_TRUCK_THRESHOLD} up is worth a trip; this band is what you send
-          first when you cannot send everything.
-        </>
-      ) : verdict === 'dispatch' ? (
-        <>
-          At or above the {NEEDS_TRUCK_THRESHOLD}-point dispatch threshold —{' '}
-          <strong className="font-semibold text-[var(--color-ink)]">
-            this station needs a truck.
-          </strong>
-        </>
-      ) : (
-        <>Below the {NEEDS_TRUCK_THRESHOLD}-point dispatch threshold. No truck needed yet.</>
+    <section className="mt-3">
+      <div className="relative">
+        <span aria-hidden="true" className="flex h-[18px] w-full gap-[2px] overflow-hidden">
+          {bands.map((b, i) => {
+            const from = i === 0 ? 0 : bands[i - 1]!.to;
+            const active = i === current;
+            return (
+              <span
+                key={b.label}
+                className={cn(
+                  'flex items-center justify-center rounded-[3px] text-[8.5px] font-semibold tracking-[0.04em] whitespace-nowrap uppercase transition-colors',
+                  i === 0 && 'rounded-l-full',
+                  i === bands.length - 1 && 'rounded-r-full',
+                )}
+                style={{
+                  width: `${b.to - from}%`,
+                  backgroundColor: active ? TONE[b.tone].fg : TONE[b.tone].bg,
+                  color: active ? TONE[b.tone].onFg : TONE[b.tone].fg,
+                }}
+              >
+                {active && b.label}
+              </span>
+            );
+          })}
+        </span>
+
+        {/* Sits on the scale rather than under a label, so "91" is located
+            rather than merely stated. */}
+        <span
+          aria-hidden="true"
+          className="absolute -top-[3px] h-[24px] w-[2px] rounded-full bg-[var(--color-ink)]"
+          style={{ left: `calc(${Math.min(100, Math.max(0, score))}% - 1px)` }}
+        />
+      </div>
+
+      {/* The tick labels are for the receipt, where the scale is being taught.
+          At the top of the drawer the band is a locator, and four numerals
+          under a 200px strip is noise beside a badge already printing the
+          score. */}
+      {!compact && (
+        <div className="num mt-1.5 flex justify-between text-[9px] text-[var(--color-ink-3)]">
+          <span>0</span>
+          <span>{NEEDS_TRUCK_THRESHOLD}</span>
+          <span>{CRITICAL_THRESHOLD}</span>
+          <span>100</span>
+        </div>
       )}
-    </p>
+
+      <p
+        className={cn(
+          'leading-relaxed text-[var(--color-ink-2)]',
+          compact ? 'mt-1.5 text-[10px]' : 'mt-2 text-[10.5px]',
+        )}
+      >
+        <strong className="font-semibold" style={{ color: TONE[here.tone].fg }}>
+          {here.label}.
+        </strong>{' '}
+        {current === 2
+          ? `Send this before anything scoring under ${CRITICAL_THRESHOLD}.`
+          : current === 1
+            ? `Worth a vehicle when one is free, after anything above ${CRITICAL_THRESHOLD}.`
+            : `Still serving riders. Watch it rather than driving to it.`}
+      </p>
+    </section>
   );
 }
 
-/** One line of the receipt: the rule, its inputs, and what it contributed. */
+/**
+ * A finding, stated as a conclusion rather than as commentary.
+ *
+ * The drawer used to say everything in one weight of grey prose, which meant
+ * the sentence that changes your decision — *most of this station is broken* —
+ * sat at the same volume as the sentence explaining what a denominator is. A
+ * tinted block with a colored edge is the cheapest way to mark the difference,
+ * and it costs no extra height because the words were already there.
+ */
+function Callout({
+  tone,
+  label,
+  children,
+}: {
+  tone: Tone;
+  label: string;
+  children: ReactNode;
+}) {
+  const t = TONE[tone];
+  return (
+    <div
+      className="mt-2 rounded-lg px-3 py-2"
+      style={{ backgroundColor: t.bg, borderLeft: `3px solid ${t.fg}` }}
+    >
+      <p className="eyebrow text-[10px]" style={{ color: t.fg }}>
+        {label}
+      </p>
+      <p className="mt-1 text-[10.5px] leading-relaxed text-[var(--color-ink-2)]">{children}</p>
+    </div>
+  );
+}
+
+/**
+ * One line of the receipt: the rule, its inputs, and what it contributed.
+ *
+ * The contribution gets a bar as well as a number. Four stacked figures — 70,
+ * +17.5, 0, +4 — are readable but not *comparable*: seeing that capacity is the
+ * second-biggest lever meant comparing digits in your head, on a panel whose
+ * entire job is to make the arithmetic obvious. The bar is scaled against the
+ * largest term on this receipt rather than against 100, because the question it
+ * answers is "which of these moved the score", not "how close to full is it".
+ *
+ * A negative contribution draws leftward from the same origin, so a capacity
+ * weight that *reduces* urgency reads as pulling the other way instead of as a
+ * short positive bar with a minus sign.
+ */
 function Line({
   label,
   sub,
   detail,
   value,
+  scale,
+  tone = 'ink',
   signed = false,
 }: {
   label: string;
   sub: string;
   detail: string;
   value: number;
+  /** Largest absolute contribution on the receipt, for the bar's full width. */
+  scale: number;
+  tone?: Tone;
   signed?: boolean;
 }) {
+  const share = scale > 0 ? Math.min(1, Math.abs(value) / scale) : 0;
+  const negative = value < 0;
+
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-[var(--color-line-soft)] py-2.5">
       <dt className="min-w-0">
@@ -932,7 +1147,31 @@ function Line({
           <span className="text-[11px] font-semibold text-[var(--color-ink)]">{label}</span>
           <span className="num text-[10px] text-[var(--color-ink-3)]">{sub}</span>
         </span>
-        <span className="mt-0.5 block text-[10px] leading-snug text-[var(--color-ink-3)]">
+
+        {/* Origin sits at the centre so negatives have somewhere to go. */}
+        <span
+          aria-hidden="true"
+          className="mt-1.5 flex h-[4px] w-full overflow-hidden rounded-full bg-[var(--color-line-soft)]"
+        >
+          <span className="flex w-1/2 justify-end">
+            {negative && (
+              <span
+                className="block h-full rounded-full"
+                style={{ width: `${share * 100}%`, backgroundColor: TONE[tone].fg }}
+              />
+            )}
+          </span>
+          <span className="flex w-1/2 justify-start">
+            {!negative && share > 0 && (
+              <span
+                className="block h-full rounded-full"
+                style={{ width: `${share * 100}%`, backgroundColor: TONE[tone].fg }}
+              />
+            )}
+          </span>
+        </span>
+
+        <span className="mt-1 block text-[10px] leading-snug text-[var(--color-ink-3)]">
           {detail}
         </span>
       </dt>

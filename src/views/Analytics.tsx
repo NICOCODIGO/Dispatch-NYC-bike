@@ -296,9 +296,18 @@ function StuckPanel({
                   </Tooltip>
                 </Td>
                 <Td>
-                  <span className="block truncate text-[12px] font-semibold text-[var(--color-ink)]">
+                  {/* The row's own onClick is unreachable by keyboard, so the
+                      name carries the same action as a real control. */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openStation(track.stationId);
+                    }}
+                    className="block min-w-0 cursor-pointer truncate text-left text-[12px] font-semibold text-[var(--color-ink)]"
+                  >
                     {track.name}
-                  </span>
+                  </button>
                   <span className="mt-px block text-[10px] text-[var(--color-ink-3)]">
                     {track.borough}
                   </span>

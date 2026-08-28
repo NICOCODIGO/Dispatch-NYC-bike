@@ -148,9 +148,18 @@ export function ZoneView() {
                       <span className="num text-[11px] text-[var(--color-ink-3)]">#{i + 1}</span>
                     </Td>
                     <Td>
-                      <span className="block text-[12px] font-semibold text-[var(--color-ink)]">
+                      {/* The row's own onClick is unreachable by keyboard, so
+                          the name carries the same action as a real control. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openStation(s.id);
+                        }}
+                        className="block min-w-0 cursor-pointer text-left text-[12px] font-semibold text-[var(--color-ink)]"
+                      >
                         {s.name}
-                      </span>
+                      </button>
                       <span className="mt-px block text-[10px] text-[var(--color-ink-3)]">
                         <span className="num">{s.docks}</span> total docks · Station{' '}
                         {s.stationNumber}

@@ -28,25 +28,41 @@ import {
 import { formatAgo, formatReportedAge } from '../lib/time';
 import { shortStationId } from '../data/adapt';
 import { capacityLoss, networkDocks } from '../data/insights';
+import {
+  CRIPPLED_SHARE,
+  HARDWARE_RANK_LABEL,
+  hardwareLoad,
+  hardwareTotals,
+  rankHardware,
+  type HardwareLoad,
+  type HardwareRank,
+} from '../data/hardware';
 import type { ScoredStation } from '../model/summary';
 import {
   ROLE_LABEL,
   STAFF_STATUS_LABEL,
+  candidatesFor,
   currentOrder,
   isOnShift,
   statusOf,
   type Role,
 } from '../model/roster';
-import { ROSTER, mechanicName, stationById, type ActivityEntry } from '../mock/data';
+import { distanceKm, travelMinutes } from '../data/fleet';
+import { DEPOTS, ROSTER, mechanicName, stationById, type ActivityEntry } from '../mock/data';
 import { cn } from '../lib/cn';
 
 /**
  * Work a truck cannot do.
  *
- * Tickets are cards rather than table rows because each one carries a
- * paragraph of fault description and its own decision — assign, defer,
- * complete — and that does not compress into a row without losing the thing a
- * mechanic actually needs to read.
+ * Two tables and a list, in the order a shift uses them: what the feed says is
+ * broken, which sites carry the most dead hardware, and the work orders those
+ * turn into.
+ *
+ * Orders are cards rather than table rows because each carries a paragraph of
+ * fault description and its own decision — assign, defer, complete — and that
+ * does not compress into a row without losing the thing a mechanic needs to
+ * read. The hardware backlog above them *is* a table, because there the
+ * question is comparative: which of these is worst.
  */
 export function Mechanics() {
   const [tab, setTab] = useState<'active' | 'history'>('active');
@@ -85,11 +101,11 @@ export function Mechanics() {
         actions={
           <>
             <Segmented
-              label="Ticket view"
+              label="Work order view"
               value={tab}
               onChange={setTab}
               options={[
-                { value: 'active', label: 'Active Tickets' },
+                { value: 'active', label: 'Open orders' },
                 { value: 'history', label: 'History' },
               ]}
             />
@@ -122,6 +138,8 @@ export function Mechanics() {
               <>
                 <FeedFaults focusId={arrival.focus} />
 
+                <HardwareBacklog now={now} />
+
                 <div className="mt-4 mb-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <h2 className="eyebrow text-[10px]">Work orders ({stats.open})</h2>
                   {/* The backlog's own condition, before you read any of it.
@@ -153,7 +171,7 @@ export function Mechanics() {
               </>
             ) : (
               <Card className="px-4 py-10 text-center text-[12px] text-[var(--color-ink-3)]">
-                No resolved tickets in this session.
+                No work orders closed in this session.
               </Card>
             )}
           </div>
@@ -409,6 +427,151 @@ function FeedFaults({ focusId }: { focusId: string | null }) {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The counterpart to the Priority Queue, for the other vehicle.
+ *
+ * The queue ranks stations a truck can fix and deliberately excludes hardware.
+ * Nothing ranked the hardware — `num_docks_disabled` and `num_bikes_disabled`
+ * were parsed on every poll and read by exactly one tooltip, so a station with
+ * twenty-eight dead docks was visible only to somebody who opened its drawer
+ * and went looking.
+ *
+ * Three orderings rather than one composite. A weighted "hardware score" would
+ * need three invented constants, and this app already carries one scoring model
+ * whose every constant it has to justify in the method sheet. Letting the
+ * reader pick the column claims nothing and answers the same question.
+ */
+function HardwareBacklog({ now }: { now: number }) {
+  const scored = useDispatch((s) => s.scored);
+  const [by, setBy] = useState<HardwareRank>('docks');
+
+  const rows = useMemo(() => hardwareLoad(scored, now), [scored, now]);
+  const totals = useMemo(() => hardwareTotals(rows), [rows]);
+  const ranked = useMemo(() => rankHardware(rows, by).slice(0, 8), [rows, by]);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="mt-4">
+      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <h2 className="eyebrow text-[10px]">Hardware backlog ({totals.stations})</h2>
+          <span className="num text-[10px] text-[var(--color-ink-3)]">
+            {totals.deadDocks} docks · {totals.brokenBikes} bikes
+            {totals.lowCharge > 0 && ` · ${totals.lowCharge} flat`}
+          </span>
+          {totals.crippled > 0 && (
+            <span className="text-[10px] font-semibold" style={{ color: TONE.empty.fg }}>
+              {totals.crippled} site{totals.crippled === 1 ? '' : 's'} mostly gone
+            </span>
+          )}
+        </div>
+        <Segmented
+          label="Rank hardware by"
+          value={by}
+          onChange={(v) => setBy(v as HardwareRank)}
+          options={(Object.keys(HARDWARE_RANK_LABEL) as HardwareRank[]).map((k) => ({
+            value: k,
+            label: HARDWARE_RANK_LABEL[k],
+          }))}
+        />
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <caption className="sr-only">
+              Stations ranked by hardware out of service, worst first.
+            </caption>
+            <thead>
+              <tr>
+                <Th>Station</Th>
+                <Th width={92}>Borough</Th>
+                <Th width={104}>Dead docks</Th>
+                <Th width={96}>Bikes</Th>
+                <Th width={104}>Low battery</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranked.map((r) => (
+                <HardwareRow key={r.stationId} row={r} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {rows.length > ranked.length && (
+          <p className="border-t border-[var(--color-line)] px-3 py-2 text-[10px] text-[var(--color-ink-3)]">
+            Showing the worst {ranked.length} of {rows.length}. Unverified stations are left out —
+            their counts are the ones the board has already decided not to trust.
+          </p>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function HardwareRow({ row }: { row: HardwareLoad }) {
+  const openStation = useConsole((s) => s.openStation);
+  const crippled = (row.deadShare ?? 0) >= CRIPPLED_SHARE;
+
+  return (
+    <tr
+      onClick={() => openStation(row.stationId)}
+      className="cursor-pointer border-b border-[var(--color-line-soft)] transition-colors last:border-b-0 hover:bg-[var(--color-sunken)]"
+    >
+      <Td>
+        {/* The name is a real button, not just a clickable row: a `<tr>` with an
+            onClick is unreachable by keyboard, and this table is the only route
+            to several of these stations. Same pattern the Priority Queue uses. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            openStation(row.stationId);
+          }}
+          className="block min-w-0 cursor-pointer truncate text-left text-[12px] font-semibold text-[var(--color-ink)]"
+        >
+          {row.name}
+        </button>
+        {crippled && (
+          <span className="mt-px block text-[10px]" style={{ color: TONE.empty.fg }}>
+            {Math.round((row.deadShare ?? 0) * 100)}% of the rack is out
+            {row.siteFaults > 0 && ' — faults look site-wide'}
+          </span>
+        )}
+      </Td>
+      <Td className="text-[11px] text-[var(--color-ink-2)]">{row.borough}</Td>
+      <Td>
+        <span
+          className="num text-[11px] font-semibold"
+          style={{ color: row.deadDocks > 0 ? TONE.empty.fg : 'var(--color-ink-3)' }}
+        >
+          {row.deadDocks}
+        </span>
+        <span className="num ml-1 text-[10px] text-[var(--color-ink-3)]">/ {row.totalDocks}</span>
+      </Td>
+      <Td>
+        <span
+          className="num text-[11px]"
+          style={{ color: row.brokenBikes > 0 ? TONE.warn.fg : 'var(--color-ink-3)' }}
+        >
+          {row.brokenBikes}
+        </span>
+      </Td>
+      <Td>
+        {row.ebikes === 0 ? (
+          <span className="text-[10px] text-[var(--color-ink-3)]">no e-bikes</span>
+        ) : (
+          <span className="num text-[11px] text-[var(--color-ink-2)]">
+            {row.lowCharge}
+            <span className="ml-1 text-[10px] text-[var(--color-ink-3)]">of {row.ebikes}</span>
+          </span>
+        )}
+      </Td>
+    </tr>
+  );
+}
+
 /** Presentation only — the model stays free of the UI vocabulary. */
 const TYPE_ICON: Record<WorkOrderType, IconName> = {
   rebalance: 'truck',
@@ -560,13 +723,99 @@ function WorkOrderCard({ order, now }: { order: WorkOrder; now: number }) {
               Assign Now
             </Button>
           </span>
-        ) : (
+        ) : null}
+        {assignee !== null && (
           <Button size="sm" variant="green" notBuilt="Would close the order and log who fixed it.">
             Complete Task
           </Button>
         )}
       </div>
+
+      {order.status === 'open' && <WhoToSend order={order} now={now} />}
     </Card>
+  );
+}
+
+/**
+ * Who can take this, and how far away they are.
+ *
+ * An unassigned order used to offer "Assign Now" and stop there, which asks the
+ * coordinator to hold the whole rota in their head: who is on this shift, which
+ * of them does dock repairs rather than battery swaps, who is already carrying
+ * two jobs, and which depot is nearer. All four are known to the app.
+ *
+ * Only on `open` orders. An order somebody already owns does not need a list of
+ * alternatives underneath it.
+ */
+function WhoToSend({ order, now }: { order: WorkOrder; now: number }) {
+  const workOrders = useConsole((s) => s.workOrders);
+  const scored = useDispatch((s) => s.scored);
+
+  const station = useMemo(() => {
+    if (!order.target.stationId) return null;
+    const hit = scored.find((s) => s.station.stationId === order.target.stationId);
+    return hit ? { lat: hit.station.lat, lon: hit.station.lon } : null;
+  }, [scored, order.target.stationId]);
+
+  const candidates = useMemo(
+    () =>
+      candidatesFor(order.type, ROSTER, workOrders, {
+        date: new Date(now),
+        station,
+        depots: DEPOTS,
+        distanceKm,
+        travelMinutes,
+      }),
+    [order.type, workOrders, now, station],
+  );
+
+  return (
+    <div className="border-t border-[var(--color-line)] bg-[var(--color-sunken)] px-3.5 py-2.5">
+      <p className="eyebrow text-[10px]">Who can take this</p>
+
+      {candidates.length === 0 ? (
+        /* Not an empty list but a staffing fact, and the one a coordinator has
+           to act on differently: nobody qualified is on, so this waits for the
+           next shift however urgent it is. */
+        <p className="mt-1 text-[10px] leading-relaxed" style={{ color: TONE.warn.fg }}>
+          Nobody on this shift covers {WORK_ORDER_LABEL[order.type].toLowerCase()}. It waits for
+          the next shift unless somebody is called in.
+        </p>
+      ) : (
+        <ul className="mt-1.5 flex flex-col gap-1.5">
+          {candidates.slice(0, 3).map((c, i) => (
+            <li key={c.person.id} className="flex items-center gap-2 text-[10px]">
+              <Avatar size={16} online={c.status !== 'off-shift'} />
+              <span
+                className={cn(
+                  'font-semibold',
+                  i === 0 ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-2)]',
+                )}
+              >
+                {c.person.name}
+              </span>
+              <span className="text-[var(--color-ink-3)]">
+                {ROLE_LABEL[c.person.role]} · {c.person.depot}
+              </span>
+              <span className="ml-auto flex items-center gap-2 whitespace-nowrap">
+                <span
+                  style={{
+                    color: c.status === 'available' ? TONE.ok.fg : 'var(--color-ink-3)',
+                  }}
+                >
+                  {c.status === 'available'
+                    ? 'free'
+                    : `${c.load} job${c.load === 1 ? '' : 's'}`}
+                </span>
+                {c.minutes !== null && (
+                  <span className="num text-[var(--color-ink-2)]">{c.minutes}m out</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

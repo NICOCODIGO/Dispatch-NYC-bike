@@ -39,8 +39,31 @@ export const SCORE_BANDS: { label: string; gloss: string; tone: Tone }[] = [
 
 export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
   score: {
-    what: `Urgency from 0 to 100. Higher is worse — it combines how the station is failing, how many riders it serves, and how fresh the reading is.`,
-    good: `At or above ${NEEDS_TRUCK_THRESHOLD} the board says send a truck. Below that a station is drifting but still serving riders. The badge deepens as a score climbs inside its band, so the worst of the reds read as worse.`,
+    what: (
+      <>
+        How badly the <strong>distribution</strong> of bikes has failed here, 0 to 100, higher
+        being worse. Four things move it: which way the station has failed (empty or full scores
+        higher than merely low or crowded), how many riders it serves, how fresh the reading is,
+        and how long it has been failing.
+      </>
+    ),
+    good: (
+      <>
+        At or above {NEEDS_TRUCK_THRESHOLD} the board says send a truck. Below that a station is
+        drifting but still serving riders.
+        <br />
+        <br />
+        <strong>What it does not measure:</strong> broken bikes, dead docks, flat station
+        batteries, or reported faults. None of those are inputs. A truck full of bikes cannot fix
+        any of them, so they are ranked separately on Maintenance Operations and a station whose
+        hardware has failed outright is routed off this board entirely.
+        <br />
+        <br />
+        Dead docks do reach the number by one indirect route: they shrink the slots the fill ratio
+        divides by, so a station can read as full because it is full, or because most of it is
+        broken.
+      </>
+    ),
     values: SCORE_BANDS,
   },
 

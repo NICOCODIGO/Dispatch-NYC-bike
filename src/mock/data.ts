@@ -8,17 +8,23 @@ import type { Staff } from '../model/roster';
 export type { StationRow, StatusLabel };
 
 /**
- * Fixtures for the console.
+ * What is left that the feed cannot supply.
  *
- * Every number on every screen comes from this file. Nothing here is fetched
- * and nothing is computed from the GBFS feed — the live data layer in
- * `src/data`, `src/model` and `src/store` is intact and untouched, waiting to
- * be wired in behind these same shapes.
+ * This file used to open by claiming "every number on every screen comes from
+ * this file". That stopped being true when the GBFS layer was wired in, and it
+ * stayed on the page long enough to become actively misleading — a reader would
+ * take the whole console for a mock.
  *
- * The figures are internally consistent on purpose: the five status counts sum
- * to 902, the donut percentages resolve back to those same counts, and the five
- * zone totals sum to 902 as well. Anything that reads as arithmetic on screen
- * actually reconciles.
+ * What remains is the things GBFS genuinely does not carry: trucks, the field
+ * roster, seed work orders, and a few panels still labelled as fixtures on
+ * screen. Everything about stations — counts, faults, timestamps, scores — now
+ * comes from the live feed through `src/data`, `src/model` and `src/store`.
+ *
+ * Several blocks have been deleted rather than left as reference: hardcoded
+ * category counts, an unverified list, chronic offenders, borough metrics. Each
+ * was a frozen copy of something the live summary now computes, and a frozen
+ * copy of a live number is a bug waiting for somebody to import it. The one
+ * that proved the point is noted where it stood.
  */
 
 /* ---------------------------------------------------------------------------
@@ -43,15 +49,12 @@ export const TOTAL_STATIONS = 902;
 export const TRUCKS_ACTIVE = 5;
 export const TRUCKS_TOTAL = 8;
 
-/**
- * The console's frozen "now".
- *
- * Every timestamp in this build is a fixture, so anything the app *creates*
- * has to be stamped on the same clock — a ticket raised from Unverified must
- * not read 01:57 in a board where the latest event is 14:02. Replaced by the
- * real clock when the feed is wired in.
- */
-export const CONSOLE_CLOCK = '14:02';
+// `CONSOLE_CLOCK = '14:02'` stood here, a frozen "now" so fixture timestamps
+// could agree with each other. It was already unused: the activity log stamps
+// real wall-clock time, and work orders carry epoch milliseconds so their age
+// and SLA can actually be computed. The comment promised it would be "replaced
+// by the real clock when the feed is wired in" — that happened; the constant
+// just outlived the sentence.
 
 /* ---------------------------------------------------------------------------
    Priority queue.
@@ -251,39 +254,20 @@ export const QUEUE_STATS = {
 };
 
 /* ---------------------------------------------------------------------------
-   Status filters. These counts are the donut, the legend and the chips.
+   Deleted: STATUS_FILTERS, FILL_DISTRIBUTION, SCORE_GUIDE.
+
+   The first two were hardcoded category counts — 62 empty, 163 flooded, 305 low
+   — that `summarize()` now derives from the feed on every poll.
+
+   The third is the cautionary one. It was a fourth copy of the score bands,
+   unrendered, still claiming "40–69 Warning" and "0–39 Healthy" long after the
+   dispatch threshold moved to 55. Nothing imported it, so nothing ever
+   contradicted it, and it would have read as authoritative to whoever found it
+   next. The bands now derive from the two constants in one place — SCORE_BANDS
+   in `src/content/columns.tsx`.
 --------------------------------------------------------------------------- */
-
-export interface StatusFilter {
-  key: string;
-  label: string;
-  count: number;
-  tone: Tone;
-}
-
-export const STATUS_FILTERS: StatusFilter[] = [
-  { key: 'empty', label: 'Empty', count: 62, tone: 'empty' },
-  { key: 'flooded', label: 'Flooded', count: 163, tone: 'flood' },
-  { key: 'low', label: 'Low stock', count: 305, tone: 'warn' },
-  { key: 'healthy', label: 'Healthy', count: 369, tone: 'ok' },
-  { key: 'unverified', label: 'Unverified', count: 3, tone: 'mute' },
-];
-
-/** Donut order runs healthy → unverified so the largest slice starts at 12. */
-export const FILL_DISTRIBUTION = [
-  { label: 'Healthy', value: 369, tone: 'ok' as Tone },
-  { label: 'Low Stock', value: 305, tone: 'warn' as Tone },
-  { label: 'Flooded', value: 163, tone: 'flood' as Tone },
-  { label: 'Empty', value: 62, tone: 'empty' as Tone },
-  { label: 'Unverified', value: 3, tone: 'mute' as Tone },
-];
-
-export const SCORE_GUIDE = [
-  { range: '70–100', label: 'Critical', detail: 'Send truck immediately', tone: 'empty' as Tone },
-  { range: '40–69', label: 'Warning', detail: 'Queue within 2 hours', tone: 'warn' as Tone },
-  { range: '0–39', label: 'Healthy', detail: 'No action needed', tone: 'ok' as Tone },
-  { range: '?', label: 'Unverified', detail: 'Stale >60 min, not scored', tone: 'mute' as Tone },
-];
+// Dead copies of a live constant do not stay dead. They get found, trusted, and
+// rendered by somebody who does not know the numbers moved.
 
 /* ---------------------------------------------------------------------------
    Score breakdown drawer.
@@ -534,45 +518,7 @@ export const TRUCK_FOCUS = {
    Unverified stations.
 --------------------------------------------------------------------------- */
 
-export interface UnverifiedRow {
-  name: string;
-  deviceId: string;
-  iccid: string;
-  region: string;
-  heartbeat: string;
-  excess: string;
-  action: 'reset' | 'mechanic';
-}
-
-export const UNVERIFIED: UnverifiedRow[] = [
-  {
-    name: 'E 106 St & Madison Ave',
-    deviceId: '#7244.02',
-    iccid: '890141…',
-    region: 'MANHATTAN',
-    heartbeat: '72m ago',
-    excess: '12m past threshold',
-    action: 'reset',
-  },
-  {
-    name: 'Kent Ave & S 11 St',
-    deviceId: '#5116.01',
-    iccid: '890141…',
-    region: 'BROOKLYN',
-    heartbeat: '104m ago',
-    excess: '44m past threshold',
-    action: 'mechanic',
-  },
-  {
-    name: 'Queens Plaza North & Crescent St',
-    deviceId: '#6421.05',
-    iccid: '890141…',
-    region: 'QUEENS',
-    heartbeat: '65m ago',
-    excess: '5m past threshold',
-    action: 'reset',
-  },
-];
+// UNVERIFIED lived here — fixture rows for a screen now driven by the feed.
 
 export const REPORTING_HEALTH = {
   bars: [
@@ -588,7 +534,13 @@ export const REPORTING_HEALTH = {
   verdict: 'NORMAL',
 };
 
-export const BATTERY = { count: 12, caption: 'STATIONS < 15%', share: 0.13 };
+// `BATTERY = { count: 12, caption: 'STATIONS < 15%' }` used to live here. It was
+// a station-power figure that could never move, because GBFS publishes no
+// battery reading at any level — and once the app grew e-bike state of charge
+// and `station-power` work orders, a frozen third battery number silently
+// disagreed with both. The Unverified panel now counts power orders raised and
+// stations actually silent, which is the observable consequence of a flat site
+// battery rather than a stand-in for the cause.
 
 export const CELLULAR = [
   { label: 'Verizon (Primary)', value: 'Up', tone: 'ok' as Tone },
@@ -654,6 +606,21 @@ export const WORK_ORDERS: WorkOrder[] = [
  * where the demand is — the night shift is a skeleton that mostly repositions
  * for the morning. Invented, and labelled `Simulated` wherever it surfaces.
  */
+/**
+ * Where the depots are.
+ *
+ * Real coordinates for invented bases, on the same reasoning the trucks carry
+ * real lat/lon: "18 minutes away" computed from a depot *name* would be a
+ * fabricated number wearing a precise costume, while the same figure derived
+ * from a position is arithmetic and wrong only in the way every travel estimate
+ * is wrong. E 18 St is Citi Bike's actual Manhattan yard; Sunset Park is the
+ * Brooklyn industrial waterfront where that kind of operation lives.
+ */
+export const DEPOTS: Record<string, { lat: number; lon: number }> = {
+  'E 18 St': { lat: 40.7359, lon: -73.9911 },
+  'Sunset Park': { lat: 40.6553, lon: -74.0122 },
+};
+
 export const ROSTER: Staff[] = [
   // AM — the heavy shift.
   { id: 'mark-t', name: 'Mark T.', role: 'field-mechanic', shift: 'am', depot: 'E 18 St' },
@@ -673,13 +640,9 @@ export const ROSTER: Staff[] = [
   { id: 'tess-o', name: 'Tess O.', role: 'depot-mechanic', shift: 'night', depot: 'E 18 St' },
 ];
 
-export function staffById(id: string | null): Staff | null {
-  if (!id) return null;
-  return ROSTER.find((p) => p.id === id) ?? null;
-}
-
 export function mechanicName(id: string | null): string | null {
-  return staffById(id)?.name ?? null;
+  if (!id) return null;
+  return ROSTER.find((p) => p.id === id)?.name ?? null;
 }
 
 export interface ActivityEntry {
@@ -730,39 +693,7 @@ export const KPIS = {
   reliability: '99.7',
 };
 
-export interface OffenderRow {
-  station: string;
-  stationId: string;
-  days: number;
-  trend: { direction: 'up' | 'down' | 'flat'; value: string };
-}
-
-export const CHRONIC_OFFENDERS: OffenderRow[] = [
-  {
-    station: 'Central Park W & 72 St',
-    stationId: '102',
-    days: 22,
-    trend: { direction: 'up', value: '8%' },
-  },
-  {
-    station: 'Park Ave & E 41 St',
-    stationId: '244',
-    days: 18,
-    trend: { direction: 'flat', value: '0%' },
-  },
-  {
-    station: 'W 20 St & 8 Ave',
-    stationId: '182',
-    days: 14,
-    trend: { direction: 'up', value: '12%' },
-  },
-  {
-    station: 'Jackson Ave & 46 Rd',
-    stationId: '629',
-    days: 11,
-    trend: { direction: 'down', value: '4%' },
-  },
-];
+// CHRONIC_OFFENDERS lived here, superseded by session duration tracking.
 
 /** 24 hourly readings, midnight to 23:00. */
 export const DEMAND_ACTUAL = [
@@ -777,47 +708,7 @@ export const DEMAND_PREDICTED = [
 
 export const DEMAND_X_LABELS = ['0:00', '3:00', '6:00', '9:00', '12:00', '15:00', '18:00', '21:00'];
 
-export interface BoroughMetric {
-  name: string;
-  stations: number;
-  trucks: number;
-  rebalance: string | null;
-  score: number | null;
-  tone: Tone;
-  /** Links the row to its zone page. Absent for the combined Bronx/SI row. */
-  zoneSlug?: string;
-}
-
-export const BOROUGH_METRICS: BoroughMetric[] = [
-  {
-    name: 'Manhattan',
-    stations: 318,
-    trucks: 2,
-    rebalance: '12.4',
-    score: 0.85,
-    tone: 'ok',
-    zoneSlug: 'manhattan',
-  },
-  {
-    name: 'Brooklyn',
-    stations: 241,
-    trucks: 1,
-    rebalance: '18.7',
-    score: 0.62,
-    tone: 'warn',
-    zoneSlug: 'brooklyn',
-  },
-  {
-    name: 'Queens',
-    stations: 187,
-    trucks: 1,
-    rebalance: '24.2',
-    score: 0.42,
-    tone: 'empty',
-    zoneSlug: 'queens',
-  },
-  { name: 'Bronx/SI (Idle)', stations: 156, trucks: 1, rebalance: null, score: null, tone: 'mute' },
-];
+// BOROUGH_METRICS lived here, superseded by live per-borough rollups.
 
 /* ---------------------------------------------------------------------------
    Zone detail.

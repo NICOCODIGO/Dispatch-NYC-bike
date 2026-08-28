@@ -125,7 +125,11 @@ critical and jumps the queue.
 **4. Show the work.** Every score opens into a receipt: the arithmetic, every
 number that fed into it, and where each of those numbers came from. There's a
 whole page listing every constant in the model, each one tagged **measured**,
-**reasoned**, or **guess**.
+**reasoned**, or **guess** — and, at the bottom of it, a second table drawing
+the line between what the feed publishes and what this app models on top of it.
+Individual bikes, battery levels, dock faults, staff and work orders are all
+modelled, and each is tagged **simulated** where it's sized by a real count from
+the feed, or **fixture** where there's nothing to anchor it to at all.
 
 That last part matters more than it sounds. A dashboard that hands you a
 confident number you can't check is asking to be either obeyed blindly or
@@ -166,13 +170,19 @@ written down in the official documentation.
   full of bikes there accomplishes nothing, so those get routed to a separate
   maintenance list instead of clogging up the dispatch queue.
 
-- **A dead battery still counts as a bike.** This one can't be fixed from this
-  data at all. The feed says how many e-bikes are sitting at a station, but not
-  how much charge they have. Citi Bike's own app will tell you a station has
-  five e-bikes with 33, 16, 11, 2 and 2 miles of range left, and two of those
-  are effectively unusable. This dashboard counts all five as available. So the
-  board can call a station healthy when a rider walking up to it would strongly
-  disagree.
+- **A dead battery still counts as a bike.** The feed says how many e-bikes are
+  sitting at a station, never how much charge they have. Citi Bike's own app
+  will tell you a station has five e-bikes with 33, 16, 11, 2 and 2 miles of
+  range left, and two of those are effectively unusable. **The score still
+  counts all five as available** — that part can't be fixed from this data, so
+  the board can call a station healthy when a rider walking up to it would
+  strongly disagree.
+
+  The rack view does show a charge per bike, and the maintenance board ranks
+  stations by how many are flat. Both are *modelled*, labelled **simulated**
+  wherever they appear, and bounded by the real e-bike count so they can never
+  claim more flat bikes than the station has. They're an illustration of the
+  workflow, not a fix for the blind spot.
 
 ### One more thing worth being clear about
 
@@ -192,10 +202,12 @@ in New York.
 | --- | --- | --- |
 | **Priority Queue** | The ranked board. Every station worth sending a truck to, worst first, with filters, search, and a receipt behind every score. | Live data |
 | **Map View** | All 2,509 stations on real geography, coloured by how urgent they are or by how full they are. | Live data |
-| **Scoring method** | Every constant in the model, tagged by how much it's worth trusting. | Live data |
+| **Scoring method** | Every constant in the model tagged by how much it's worth trusting, plus the line between what the feed publishes and what the app models. | Live data |
 | **Fleet Operations** | Trucks grouped by when each one frees up, each matched to a job worth doing. | Real logic, invented trucks |
 | **Dispatch History** | Did the trips we sent actually fix anything? | Works, resets on reload |
-| **Unverified / Maintenance** | Stations that have gone quiet, and ones that are mechanically broken. | Partly built |
+| **Unverified** | Stations that have gone quiet, and what their silence costs. | Live data |
+| **Maintenance** | Work a truck can't do: stations ranked by dead docks and broken bikes, and the work orders those turn into, each on an SLA clock. | Live counts, invented crews |
+| **Shift** | Can this shift actually clear the queue? Runs needed against runs available, and the roster behind the answer. | Real arithmetic, invented staff |
 | **Analytics / Zones** | Placeholder screens. | Barely started |
 
 ---
