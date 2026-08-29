@@ -382,7 +382,7 @@ export function PriorityQueue() {
                   {formatReportedAge(worstFault.breakdown.staleness.ageMinutes)}. Stations like this
                   never appear in the board below; a truck full of bikes cannot fix a dead dock.{' '}
                   <Link
-                    to={focusHref('/mechanics', worstFault.station.stationId, 'Priority Queue', '/')}
+                    to={focusHref('/maintenance/orders', worstFault.station.stationId, 'Priority Queue', '/')}
                     className="font-medium underline underline-offset-2"
                     style={{ color: TONE.empty.fg }}
                   >
@@ -723,7 +723,7 @@ function StatRow({
         label="Trucks out"
         value="5/8"
         foot="3 idle at depots"
-        to="/trucks"
+        to="/fleet/trucks"
         actionLabel="Open fleet operations."
         hint="Vehicles currently on the road out of the total fleet. Fixture — the public feed carries no vehicles."
       />
@@ -732,7 +732,7 @@ function StatRow({
         value={dash(summary?.unverified)}
         tone={summary && summary.unverified > 0 ? 'warn' : 'ink'}
         foot="silent over an hour"
-        to="/unverified"
+        to="/monitoring/unverified"
         actionLabel="Open unverified stations."
         hint="Stations that have not checked in for more than an hour. Their bike counts cannot be trusted, so they are left out of the ranking entirely rather than sending a truck on a stale reading."
       />
@@ -899,7 +899,7 @@ function OffQueueHits({
       rows: matches.mechanic,
       label: 'need a mechanic',
       why: 'out of service — a truck cannot fix these',
-      to: '/mechanics',
+      to: '/maintenance/orders',
       linkLabel: 'Maintenance Ops',
       tone: 'empty' as Tone,
     },
@@ -907,7 +907,7 @@ function OffQueueHits({
       rows: matches.unverified,
       label: 'are not reporting',
       why: 'silent too long to score',
-      to: '/unverified',
+      to: '/monitoring/unverified',
       linkLabel: 'Unverified Stations',
       tone: 'warn' as Tone,
     },
@@ -1070,7 +1070,7 @@ function ActionHint({ row }: { row: StationRow }) {
   if (action.kind === 'mechanic') {
     return (
       <Link
-        to="/mechanics"
+        to="/maintenance/orders"
         onClick={(e) => e.stopPropagation()}
         className="mt-1 block text-[10px] underline-offset-2 hover:underline"
         style={{ color: TONE.empty.fg }}
@@ -1175,7 +1175,7 @@ function ShiftCard() {
     <Card>
       <CardHead
         title={label}
-        right={<RailLink to="/shift" label="Open the shift view" />}
+        right={<RailLink to="/fleet/shift" label="Open the shift view" />}
       />
       <RailStat
         value={cap.runsAvailable}
@@ -1224,7 +1224,7 @@ function MaintenanceCard() {
     <Card>
       <CardHead
         title="Maintenance"
-        right={<RailLink to="/mechanics" label="Open maintenance operations" />}
+        right={<RailLink to="/maintenance/orders" label="Open maintenance operations" />}
       />
       <RailStat
         value={stats.open}
@@ -1269,7 +1269,7 @@ function ActiveTrucks() {
 
   return (
     <Card>
-      <CardHead title="Active trucks" right={<RailLink to="/trucks" label="Open fleet operations" />} />
+      <CardHead title="Active trucks" right={<RailLink to="/fleet/trucks" label="Open fleet operations" />} />
       <ul className="px-3.5 pb-2">
         {shown.map((truck, i) => (
           <li

@@ -133,7 +133,7 @@ export function Shift() {
             value={orders.open}
             tone={orders.breached > 0 ? 'empty' : 'ink'}
             foot={orders.breached > 0 ? `${orders.breached} past target` : 'all inside target'}
-            to="/mechanics"
+            to="/maintenance/orders"
             actionLabel="Open maintenance operations."
             hint="Repair and swap work outstanding. Separate from rebalancing — a truck full of bikes cannot fix a dead dock."
           />

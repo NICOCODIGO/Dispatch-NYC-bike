@@ -299,6 +299,15 @@
   animation: fade-in 160ms ease-out;
 }
 
+/* The chrome rail widens and its groups unfold on one shared curve, so the
+   peek reads as a single motion rather than several. Width and grid-template-rows
+   are the only properties that move; the icons hold still and the labels are
+   revealed by the clip edge sweeping past them. */
+.rail-ease {
+  transition-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
+  transition-duration: 200ms;
+}
+
 /* A slow breathing dot for "live" indicators. */
 @keyframes pulse-dot {
   0%,

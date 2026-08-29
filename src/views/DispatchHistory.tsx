@@ -121,7 +121,7 @@ export function DispatchHistory() {
                     </Td>
                     <Td>
                       <Link
-                        to={focusHref('/', run.stationId, 'Dispatch History', '/history')}
+                        to={focusHref('/', run.stationId, 'Dispatch History', '/dispatch/history')}
                         className="text-[12px] font-semibold text-[var(--color-ink)] underline-offset-2 hover:underline"
                       >
                         {run.stationName}
@@ -219,7 +219,7 @@ export function DispatchHistory() {
                       </Td>
                       <Td>
                         <Link
-                          to={focusHref('/', run.stationId, 'Dispatch History', '/history')}
+                          to={focusHref('/', run.stationId, 'Dispatch History', '/dispatch/history')}
                           className="text-[12px] font-semibold text-[var(--color-ink)] underline-offset-2 hover:underline"
                         >
                           {run.stationName}

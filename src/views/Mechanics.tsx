@@ -28,15 +28,6 @@ import {
 import { formatAgo, formatReportedAge } from '../lib/time';
 import { shortStationId } from '../data/adapt';
 import { capacityLoss, networkDocks } from '../data/insights';
-import {
-  CRIPPLED_SHARE,
-  HARDWARE_RANK_LABEL,
-  hardwareLoad,
-  hardwareTotals,
-  rankHardware,
-  type HardwareLoad,
-  type HardwareRank,
-} from '../data/hardware';
 import type { ScoredStation } from '../model/summary';
 import {
   ROLE_LABEL,
@@ -137,8 +128,6 @@ export function Mechanics() {
             {tab === 'active' ? (
               <>
                 <FeedFaults focusId={arrival.focus} />
-
-                <HardwareBacklog now={now} />
 
                 <div className="mt-4 mb-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <h2 className="eyebrow text-[10px]">Work orders ({stats.open})</h2>
@@ -366,7 +355,7 @@ function FeedFaults({ focusId }: { focusId: string | null }) {
                         {formatReportedAge(breakdown.staleness.ageMinutes)}
                       </span>
                       <Link
-                        to={focusHref('/', station.stationId, 'Maintenance Ops', '/mechanics')}
+                        to={focusHref('/', station.stationId, 'Maintenance Ops', '/maintenance/orders')}
                         className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] text-[var(--color-ink-3)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
                       >
                         <Icon name="list-ordered" size={10} />
@@ -426,151 +415,6 @@ function FeedFaults({ focusId }: { focusId: string | null }) {
 }
 
 /* -------------------------------------------------------------------------- */
-
-/**
- * The counterpart to the Priority Queue, for the other vehicle.
- *
- * The queue ranks stations a truck can fix and deliberately excludes hardware.
- * Nothing ranked the hardware — `num_docks_disabled` and `num_bikes_disabled`
- * were parsed on every poll and read by exactly one tooltip, so a station with
- * twenty-eight dead docks was visible only to somebody who opened its drawer
- * and went looking.
- *
- * Three orderings rather than one composite. A weighted "hardware score" would
- * need three invented constants, and this app already carries one scoring model
- * whose every constant it has to justify in the method sheet. Letting the
- * reader pick the column claims nothing and answers the same question.
- */
-function HardwareBacklog({ now }: { now: number }) {
-  const scored = useDispatch((s) => s.scored);
-  const [by, setBy] = useState<HardwareRank>('docks');
-
-  const rows = useMemo(() => hardwareLoad(scored, now), [scored, now]);
-  const totals = useMemo(() => hardwareTotals(rows), [rows]);
-  const ranked = useMemo(() => rankHardware(rows, by).slice(0, 8), [rows, by]);
-
-  if (rows.length === 0) return null;
-
-  return (
-    <section className="mt-4">
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h2 className="eyebrow text-[10px]">Hardware backlog ({totals.stations})</h2>
-          <span className="num text-[10px] text-[var(--color-ink-3)]">
-            {totals.deadDocks} docks · {totals.brokenBikes} bikes
-            {totals.lowCharge > 0 && ` · ${totals.lowCharge} flat`}
-          </span>
-          {totals.crippled > 0 && (
-            <span className="text-[10px] font-semibold" style={{ color: TONE.empty.fg }}>
-              {totals.crippled} site{totals.crippled === 1 ? '' : 's'} mostly gone
-            </span>
-          )}
-        </div>
-        <Segmented
-          label="Rank hardware by"
-          value={by}
-          onChange={(v) => setBy(v as HardwareRank)}
-          options={(Object.keys(HARDWARE_RANK_LABEL) as HardwareRank[]).map((k) => ({
-            value: k,
-            label: HARDWARE_RANK_LABEL[k],
-          }))}
-        />
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
-            <caption className="sr-only">
-              Stations ranked by hardware out of service, worst first.
-            </caption>
-            <thead>
-              <tr>
-                <Th>Station</Th>
-                <Th width={92}>Borough</Th>
-                <Th width={104}>Dead docks</Th>
-                <Th width={96}>Bikes</Th>
-                <Th width={104}>Low battery</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranked.map((r) => (
-                <HardwareRow key={r.stationId} row={r} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {rows.length > ranked.length && (
-          <p className="border-t border-[var(--color-line)] px-3 py-2 text-[10px] text-[var(--color-ink-3)]">
-            Showing the worst {ranked.length} of {rows.length}. Unverified stations are left out —
-            their counts are the ones the board has already decided not to trust.
-          </p>
-        )}
-      </Card>
-    </section>
-  );
-}
-
-function HardwareRow({ row }: { row: HardwareLoad }) {
-  const openStation = useConsole((s) => s.openStation);
-  const crippled = (row.deadShare ?? 0) >= CRIPPLED_SHARE;
-
-  return (
-    <tr
-      onClick={() => openStation(row.stationId)}
-      className="cursor-pointer border-b border-[var(--color-line-soft)] transition-colors last:border-b-0 hover:bg-[var(--color-sunken)]"
-    >
-      <Td>
-        {/* The name is a real button, not just a clickable row: a `<tr>` with an
-            onClick is unreachable by keyboard, and this table is the only route
-            to several of these stations. Same pattern the Priority Queue uses. */}
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            openStation(row.stationId);
-          }}
-          className="block min-w-0 cursor-pointer truncate text-left text-[12px] font-semibold text-[var(--color-ink)]"
-        >
-          {row.name}
-        </button>
-        {crippled && (
-          <span className="mt-px block text-[10px]" style={{ color: TONE.empty.fg }}>
-            {Math.round((row.deadShare ?? 0) * 100)}% of the rack is out
-            {row.siteFaults > 0 && ' — faults look site-wide'}
-          </span>
-        )}
-      </Td>
-      <Td className="text-[11px] text-[var(--color-ink-2)]">{row.borough}</Td>
-      <Td>
-        <span
-          className="num text-[11px] font-semibold"
-          style={{ color: row.deadDocks > 0 ? TONE.empty.fg : 'var(--color-ink-3)' }}
-        >
-          {row.deadDocks}
-        </span>
-        <span className="num ml-1 text-[10px] text-[var(--color-ink-3)]">/ {row.totalDocks}</span>
-      </Td>
-      <Td>
-        <span
-          className="num text-[11px]"
-          style={{ color: row.brokenBikes > 0 ? TONE.warn.fg : 'var(--color-ink-3)' }}
-        >
-          {row.brokenBikes}
-        </span>
-      </Td>
-      <Td>
-        {row.ebikes === 0 ? (
-          <span className="text-[10px] text-[var(--color-ink-3)]">no e-bikes</span>
-        ) : (
-          <span className="num text-[11px] text-[var(--color-ink-2)]">
-            {row.lowCharge}
-            <span className="ml-1 text-[10px] text-[var(--color-ink-3)]">of {row.ebikes}</span>
-          </span>
-        )}
-      </Td>
-    </tr>
-  );
-}
 
 /** Presentation only — the model stays free of the UI vocabulary. */
 const TYPE_ICON: Record<WorkOrderType, IconName> = {

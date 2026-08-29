@@ -46,6 +46,7 @@ export type IconName =
   | 'check'
   | 'check-circle'
   | 'minus-circle'
+  | 'panel-left'
   | 'users';
 
 const PATHS: Record<IconName, ReactNode> = {
@@ -216,6 +217,12 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="10" />
       <path d="M8 12h8" />
+    </>
+  ),
+  'panel-left': (
+    <>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M9 3v18" />
     </>
   ),
   users: (

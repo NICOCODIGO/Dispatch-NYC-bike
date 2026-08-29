@@ -7,13 +7,21 @@ import { MapView } from './views/MapView';
 import { TruckDispatch } from './views/TruckDispatch';
 import { DispatchHistory } from './views/DispatchHistory';
 import { Unverified } from './views/Unverified';
+import { SiteHealth } from './views/SiteHealth';
 import { Mechanics } from './views/Mechanics';
+import { Hardware } from './views/Hardware';
 import { Shift } from './views/Shift';
 import { Analytics } from './views/Analytics';
 import { ZoneView } from './views/ZoneView';
 
 /**
  * Routes.
+ *
+ * Grouped by section — /dispatch, /fleet, /maintenance, /monitoring — so the URL
+ * says which part of the console you are in and the sidebar accordion can derive
+ * its open section straight from the path. The old flat paths (/map, /mechanics,
+ * /unverified…) still resolve: each is a redirect to its new home, so bookmarks
+ * and any link that slipped through the rename keep working.
  *
  * Priority Queue and the station receipt run on the live GBFS feed, through
  * the adapter in `src/data/adapt.ts`. The remaining screens still render from
@@ -28,15 +36,38 @@ export default function App() {
   return (
     <AppShell>
       <Routes>
+        {/* Dispatch */}
         <Route path="/" element={<PriorityQueue />} />
-        <Route path="/map" element={<MapView />} />
-        <Route path="/trucks" element={<TruckDispatch />} />
-        <Route path="/history" element={<DispatchHistory />} />
-        <Route path="/unverified" element={<Unverified />} />
-        <Route path="/mechanics" element={<Mechanics />} />
-        <Route path="/shift" element={<Shift />} />
+        <Route path="/dispatch/map" element={<MapView />} />
+        <Route path="/dispatch/history" element={<DispatchHistory />} />
+
+        {/* Fleet */}
+        <Route path="/fleet/trucks" element={<TruckDispatch />} />
+        <Route path="/fleet/shift" element={<Shift />} />
+
+        {/* Maintenance */}
+        <Route path="/maintenance/orders" element={<Mechanics />} />
+        <Route path="/maintenance/hardware" element={<Hardware />} />
+
+        {/* Monitoring */}
+        <Route path="/monitoring/unverified" element={<Unverified />} />
+        <Route path="/monitoring/site-health" element={<SiteHealth />} />
+
+        {/* Analytics */}
         <Route path="/analytics" element={<Analytics />} />
+
+        {/* Zones */}
         <Route path="/zone/:slug" element={<ZoneView />} />
+
+        {/* Redirects from the pre-section paths. */}
+        <Route path="/map" element={<Navigate to="/dispatch/map" replace />} />
+        <Route path="/history" element={<Navigate to="/dispatch/history" replace />} />
+        <Route path="/trucks" element={<Navigate to="/fleet/trucks" replace />} />
+        <Route path="/shift" element={<Navigate to="/fleet/shift" replace />} />
+        <Route path="/mechanics" element={<Navigate to="/maintenance/orders" replace />} />
+        <Route path="/unverified" element={<Navigate to="/monitoring/unverified" replace />} />
+        <Route path="/dispatch" element={<Navigate to="/" replace />} />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>
