@@ -9,16 +9,17 @@
 ![Mapbox](https://img.shields.io/badge/Mapbox-000000?style=flat&logo=mapbox&logoColor=white)
 
 <a href="https://city-bike-sigma.vercel.app/" target="_blank" rel="noopener">
-  <img src="docs/screenshots/queue.png" alt="Priority Queue — every station that needs a truck, worst first" width="880" />
+  <img src="docs/screenshots/queue.png" alt="Rebalancing — every station that needs a truck, worst first" width="880" />
 </a>
 
 **A live dashboard for New York's bike share. It reads the city's public data and
 answers one question: which station should a truck go to next, and is it dropping
 bikes off or picking them up?**
 
-> **What's real:** the data feed, the scoring model and the ranked queue all run
-> on live data. The truck fleet is simulated, because no operator publishes where
-> its vehicles are. [Exactly what's built and what isn't →](#where-this-actually-stands)
+> **What's real:** the data feed, the scoring model and the ranked board all run
+> on live data. The trucks and the crews are simulated, because no operator
+> publishes them. This is a live project, still being built as of September 2026.
+> [Exactly what's built and what isn't →](#where-this-actually-stands)
 
 ---
 
@@ -131,6 +132,11 @@ Individual bikes, battery levels, dock faults, staff and work orders are all
 modelled, and each is tagged **simulated** where it's sized by a real count from
 the feed, or **fixture** where there's nothing to anchor it to at all.
 
+Those four steps produce the board. Everything else in the app runs off it —
+which stations need a mechanic instead of a truck, whether the people on shift
+can actually clear the list, and, at the end of the day, whether the trips that
+went out changed anything.
+
 That last part matters more than it sounds. A dashboard that hands you a
 confident number you can't check is asking to be either obeyed blindly or
 ignored completely. This one tells you up front that the 55 line is a guess
@@ -198,17 +204,23 @@ in New York.
 
 ## The screens
 
+Grouped the way you'd work: dispatch first, then the fleet, then the repairs,
+then the things you only watch.
+
 | Screen | What it does | Status |
 | --- | --- | --- |
-| **Priority Queue** | The ranked board. Every station worth sending a truck to, worst first, with filters, search, and a receipt behind every score. | Live data |
-| **Map View** | All 2,509 stations on real geography, coloured by how urgent they are or by how full they are. | Live data |
+| **Rebalancing** | The ranked board. Every station too empty or too full for riders, worst first, with filters, search, and a receipt behind every score. A headline up top names the single worst thing on the network right now. | Live data |
+| **Map** | All 2,509 stations on real geography, coloured by how urgent they are or by which way they're failing. | Live data |
+| **Dispatch History** | Did the trips we sent actually fix anything? How much of each order arrived, and whether the station recovered. | Works, resets on reload |
+| **Trucks** | The fleet grouped by when each vehicle frees up, each matched to a job worth doing. | Real logic, invented trucks |
+| **Shift** | Can the people on tonight actually clear the queue? Runs needed against runs available, and the roster behind the answer. | Real arithmetic, invented staff |
+| **Work Orders** | Repairs a truck can't do — a dead dock, a station that won't take rentals — each on an SLA clock, matched to whoever on shift is qualified. | Live counts, invented crews |
+| **Hardware & Docks** | Stations ranked by dead docks, broken bikes and flat e-bike batteries. The counterpart to Rebalancing, for the mechanic instead of the driver. | Live counts, modelled batteries |
+| **Not Reporting** | Stations that have gone quiet, and how much of the network their silence hides. | Live data |
+| **Site Health** | Reporting uptime, site power, the cellular link behind it all. Mostly context the feed can't give directly, and it says so. | Part live, part fixture |
+| **Network Performance** | The one screen that asks whether any of this works: it watches every flagged station and checks, poll by poll, whether it recovered. | Live, this session only |
+| **Zones** | The same board, narrowed to one borough. | Live data |
 | **Scoring method** | Every constant in the model tagged by how much it's worth trusting, plus the line between what the feed publishes and what the app models. | Live data |
-| **Fleet Operations** | Trucks grouped by when each one frees up, each matched to a job worth doing. | Real logic, invented trucks |
-| **Dispatch History** | Did the trips we sent actually fix anything? | Works, resets on reload |
-| **Unverified** | Stations that have gone quiet, and what their silence costs. | Live data |
-| **Maintenance** | Work a truck can't do: stations ranked by dead docks and broken bikes, and the work orders those turn into, each on an SLA clock. | Live counts, invented crews |
-| **Shift** | Can this shift actually clear the queue? Runs needed against runs available, and the roster behind the answer. | Real arithmetic, invented staff |
-| **Analytics / Zones** | Placeholder screens. | Barely started |
 
 ---
 
@@ -229,24 +241,42 @@ glance. Uptown drains, downtown clogs.
 
 ## Where this actually stands
 
+It's not finished, and it's not meant to look like it is. Here's exactly what's
+real, what's faked, and what isn't there yet — as of September 2026, and this
+list keeps moving.
+
 **Real and working**
 - Live polling of the public feed, all 2,509 stations, refreshed every minute
-- The full scoring model, with 161 automated tests holding its arithmetic in
-  place
-- The ranked queue, filters, search, and the score receipts
+- The full model — scoring, triage, capacity arithmetic, work-order SLAs — with
+  257 automated tests holding it in place
+- The ranked board, filters, search, the score receipts, and a headline that
+  names the worst thing on the network at any moment
 - The map, on real coordinates
 - Composing and sending a dispatch, then measuring whether the station recovered
+- A recovery record: every flagged station snapshotted on each poll, so the
+  board can say whether what it flagged actually got fixed — for as long as the
+  tab stays open
+- The maintenance side: stations ranked by dead docks, broken bikes and flat
+  batteries, and the work orders those turn into, each on an SLA clock
 
 **Simulated**
-- **The trucks.** There are 8 of them, with positions, loads and schedules, and
-  all of it is invented. The public feed contains no vehicles at all, because no
-  operator publishes them. The matching logic is real. The vehicles it matches
-  are not.
+- **The trucks.** Eight of them, with positions, loads and schedules, all
+  invented. The public feed contains no vehicles, because no operator publishes
+  them. The matching logic is real. The vehicles it matches are not.
+- **The crews.** Eleven people across three shifts, with depots and
+  qualifications. The arithmetic that works out whether they can clear the
+  backlog is real; the people are not.
+- **Individual bikes and their charge.** GBFS carries counts, never machines —
+  so frame numbers, battery levels and dock-fault reasons are modelled, each one
+  bounded by a real count so it can't overclaim.
 
 **Not built yet**
-- Analytics and Zones are placeholders
 - Nothing is saved. Dispositions, assignments and dispatch history all reset
   when you reload the page.
+- The recovery record only lasts as long as the tab is open. A scheduled worker
+  that would keep it running on its own is designed and sitting in `/worker`,
+  deliberately not deployed — a backend that silently collects nothing is worse
+  than no backend at all.
 - 14 buttons across the app are **deliberately disabled**, each with a tooltip
   explaining what it would have done. They're switched off rather than left
   quietly broken, because a button that does nothing makes you doubt the parts

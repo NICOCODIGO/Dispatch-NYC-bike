@@ -6,7 +6,7 @@ the file lands — no markdown editing needed.
 
 | Filename | Which screenshot |
 | --- | --- |
-| `queue.png` | **Priority Queue with a station's Score Breakdown open** — ranked table on the left, receipt panel on the right. Sits at the very top of the README. |
+| `queue.png` | **Rebalancing board with a station's Score Breakdown open** — ranked table on the left, receipt panel on the right. Sits at the very top of the README. |
 | `map.jpg` | **Network Status Map** — the full city, Urgency layer, legend visible. |
 
 That's it. Two files. Adding more means adding matching `![...](...)` lines to

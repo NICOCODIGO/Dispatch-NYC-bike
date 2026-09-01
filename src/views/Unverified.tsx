@@ -100,8 +100,8 @@ export function Unverified() {
             <Banner tone="empty" icon="radio-tower">
               <strong className="font-semibold">Unreliable data sources detected.</strong> The
               stations below have exceeded the {STALENESS_MAX_MINUTES}-minute reporting threshold.
-              They are excluded from Priority Queue scoring to prevent false-positive dispatch
-              orders based on stale fill levels.
+              They are excluded from rebalancing scoring to prevent false-positive dispatch orders
+              based on stale fill levels.
             </Banner>
           </div>
         )}
@@ -236,7 +236,7 @@ export function Unverified() {
                                 detail:
                                   excess === null
                                     ? 'The feed carries no usable timestamp for this station at all. Escalated from Unverified Stations; modem or power fault suspected.'
-                                    : `No heartbeat for ${formatReportedAge(breakdown.staleness.ageMinutes)} — ${formatExcess(excess)}. Escalated from Unverified Stations; cellular modem or power fault suspected. Excluded from Priority Queue scoring until it reports.`,
+                                    : `No heartbeat for ${formatReportedAge(breakdown.staleness.ageMinutes)} — ${formatExcess(excess)}. Escalated from Unverified Stations; cellular modem or power fault suspected. Excluded from rebalancing scoring until it reports.`,
                               })
                             }
                           >
@@ -313,34 +313,34 @@ function BlindSpotFinding({ rows }: { rows: ScoredStation[] }) {
   const loss = capacityLoss(rows, networkDocks(scored));
   const never = rows.filter((r) => r.breakdown.staleness.ageMinutes === null).length;
   const worst = loss.byBorough[0];
+  const bad = loss.share >= 0.08 || loss.stations >= 8;
 
   return (
     <Finding
       icon="radio-tower"
-      tone="empty"
+      tone={bad ? 'empty' : 'warn'}
       headline={
         <>
-          {loss.docks.toLocaleString('en-US')} docks are unaccounted for across {loss.stations}{' '}
-          silent station{loss.stations === 1 ? '' : 's'}.
+          The board can&rsquo;t see {(loss.share * 100).toFixed(1)}% of the network —{' '}
+          {loss.stations} silent station{loss.stations === 1 ? '' : 's'},{' '}
+          {loss.docks.toLocaleString('en-US')} docks.
         </>
       }
       detail={
         <>
-          That is {(loss.share * 100).toFixed(1)}% of the network the board cannot see. These
-          stations are excluded from scoring, so they will never appear in the queue however bad
-          they get — a station could be empty for a day and this is the only screen that would
-          know.
+          These stations are dropped from scoring, so they never reach the queue however bad they
+          get — a station could be empty for a day and this is the only screen that would know.
           {never > 0 && (
             <>
               {' '}
-              {never} of them {never === 1 ? 'has' : 'have'} never sent a usable timestamp at all.
+              {never} {never === 1 ? 'has' : 'have'} never sent a usable timestamp at all.
             </>
           )}
           {loss.oldestMinutes !== null && (
-            <> The longest silence is {formatReportedAge(loss.oldestMinutes)}.</>
+            <> Longest silence: {formatReportedAge(loss.oldestMinutes)}.</>
           )}
           {worst && loss.byBorough.length > 1 && (
-            <> {worst.borough} is worst affected with {worst.stations}.</>
+            <> {worst.borough} worst affected, with {worst.stations}.</>
           )}
         </>
       }

@@ -117,8 +117,7 @@ export const DEFINITIONS: Record<string, Definition> = {
 
   truck: {
     plain:
-      'A van with bike racks that moves bikes between stations. It does not repair anything — it takes bikes from somewhere too full and delivers them somewhere too empty.',
-    mechanism: 'Fixes distribution problems: empty, low stock, flooded, full.',
+      'Takes bikes from somewhere too full and delivers them somewhere too empty. It does not repair anything.',
   },
   rebalancing: {
     plain:

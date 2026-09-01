@@ -289,7 +289,7 @@ function Headline({
         icon="truck"
         tone="mute"
         headline="No trucks have been sent yet."
-        detail="Dispatch one from the Priority Queue and this becomes a record of whether it worked — how much of the ordered quantity actually moved, and whether the station recovered."
+        detail="Dispatch one from the rebalancing board and this becomes a record of whether it worked — how much of the ordered quantity actually moved, and whether the station recovered."
       />
     );
   }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { JoinedStation } from '../data/gbfs';
 import type { Borough } from '../data/boroughs';
 import { applyFilters } from './queue';
-import { scoreNetwork, situationSentence, summarize, summarizeAll } from './summary';
+import { scoreNetwork, summarize, summarizeAll } from './summary';
 import { laneOf, triage } from './triage';
 import type { Filters } from '../store/useDispatch';
 
@@ -157,41 +157,6 @@ describe('summary counts only truck work as truck work', () => {
   });
 });
 
-describe('situation readout', () => {
-  it('says so plainly when nothing needs a truck', () => {
-    const s = summaryOf([station({ bikes: 10, docks: 10 })]);
-    expect(situationSentence(s)).toMatch(/^No station needs a truck right now/);
-  });
-
-  it('leads with the workload and which side it leans', () => {
-    const s = summaryOf(Array.from({ length: 4 }, () => FULL()));
-    expect(situationSentence(s)).toContain('4 stations need a truck — 100% on the full side.');
-  });
-
-  it('names where the first truck goes', () => {
-    const s = summaryOf([station({ name: 'E 2 St & 2 Ave', bikes: 0, docks: 60, capacity: 60 })]);
-    expect(situationSentence(s)).toContain('The worst is E 2 St & 2 Ave.');
-  });
-
-  it('reports mechanic work as a separate sentence, never folded in', () => {
-    const text = situationSentence(summaryOf([EMPTY(), BROKEN(), BROKEN()]));
-    expect(text).toContain('1 station needs a truck');
-    expect(text).toContain('Separately, 2 need a mechanic.');
-  });
-
-  it('mentions unverified stations when there are any', () => {
-    const text = situationSentence(summaryOf([EMPTY(), STALE()]));
-    expect(text).toMatch(/Separately, 1 is unverified\./);
-  });
-
-  it('stays quiet about other lanes when they are empty', () => {
-    expect(situationSentence(summaryOf([EMPTY()]))).not.toContain('Separately');
-  });
-
-  it('uses singular grammar for a single station', () => {
-    expect(situationSentence(summaryOf([EMPTY()]))).toContain('1 station needs a truck');
-  });
-});
 
 describe('queue filtering', () => {
   const base: Filters = {

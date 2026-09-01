@@ -16,6 +16,7 @@ import {
   TonePill,
 } from '../ui/primitives';
 import { TONE, type Tone } from '../ui/tone';
+import { PageGuide } from '../ui/PageGuide';
 import { TipBody, TipTitle, Tooltip } from '../ui/Tooltip';
 import { COLUMN_HELP } from '../content/columns';
 import { focusHref } from '../state/useFocus';
@@ -76,6 +77,8 @@ export function Analytics() {
       />
 
       <PageBody>
+        <PageGuide id="analytics" />
+
         <RecoveryFinding
           flagged={flagged}
           outcomes={outcomes}
@@ -279,7 +282,7 @@ function StuckPanel({
                       <>
                         <TipTitle>Work this station</TipTitle>
                         <TipBody>
-                          Opens the Priority Queue scrolled to {track.name}, so you can act on it
+                          Opens the rebalancing board scrolled to {track.name}, so you can act on it
                           rather than just read about it.
                         </TipBody>
                       </>
@@ -288,7 +291,7 @@ function StuckPanel({
                     <Link
                       to={focusHref('/', track.stationId, 'Analytics', '/analytics')}
                       onClick={(e) => e.stopPropagation()}
-                      aria-label={`Open ${track.name} in the Priority Queue`}
+                      aria-label={`Open ${track.name} in the rebalancing board`}
                       className="inline-flex cursor-pointer text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
                     >
                       <Icon name="list-ordered" size={13} />

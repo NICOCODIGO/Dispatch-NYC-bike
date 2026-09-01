@@ -203,7 +203,7 @@ export interface OffQueueMatches {
 }
 
 /**
- * Stations matching the search that the Priority Queue structurally cannot show.
+ * Stations matching the search that the Rebalancing board structurally cannot show.
  *
  * The queue pools the truck lane only — by design, since a dead station has no
  * business in a rebalancing list. But the consequence was a search box that

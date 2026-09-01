@@ -222,7 +222,7 @@ export const useConsole = create<ConsoleState>((set, get) => ({
         verb: next === null ? 'cleared the disposition on' : DISPOSITION_VERB[next],
         what: name,
         time: clock(),
-        where: 'Priority Queue',
+        where: 'Rebalancing',
         tone: next === 'snoozed' ? 'mute' : next === 'dispatched' ? 'ok' : 'warn',
       };
 

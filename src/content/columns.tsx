@@ -135,7 +135,7 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
   },
 
   urgency: {
-    what: 'The same 0–100 urgency score the Priority Queue ranks by, for stations in this zone.',
+    what: 'The same 0–100 urgency score the rebalancing board ranks by, for stations in this zone.',
     good: `At or above ${NEEDS_TRUCK_THRESHOLD} means send a truck.`,
   },
 

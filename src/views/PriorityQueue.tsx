@@ -12,7 +12,6 @@ import {
   CardHead,
   Dot,
   FilterChip,
-  Finding,
   Pagination,
   SearchInput,
   Select,
@@ -28,22 +27,24 @@ import { OutcomeChip } from './DispatchHistory';
 import { latestRunFor, outcomeOf, type DispatchRun } from '../data/dispatchRun';
 import { MethodSheet } from './MethodSheet';
 import { COLUMN_HELP } from '../content/columns';
-import { matchesOutsideQueue, rebalanceDemand } from '../data/insights';
+import { PageGuide } from '../ui/PageGuide';
+import { SituationFinding } from '../content/situation';
+import { matchesOutsideQueue, networkDocks, rebalanceDemand } from '../data/insights';
 import { SHIFTS, shiftCapacity } from '../model/roster';
+import { assessSituation } from '../model/situation';
 import { backlog } from '../model/workOrder';
 import { hardwareLoad, hardwareTotals } from '../data/hardware';
 import { DISPOSITION_LABEL, useConsole, type Disposition } from '../state/useConsole';
 import { toStationRow } from '../data/adapt';
 import type { StationRow } from '../data/stationRow';
 import { BOROUGHS, type Borough } from '../data/boroughs';
-import { mechanicFault } from '../model/triage';
 import { NEEDS_TRUCK_THRESHOLD, type StationCategory } from '../model/score';
 import { applyFilters } from '../model/queue';
 import { FEED_STALE_MS, useDispatch, type SortKey } from '../store/useDispatch';
-import { formatAgo, formatClock, formatReportedAge } from '../lib/time';
+import { formatAgo, formatClock } from '../lib/time';
 import { durationIndex } from '../data/duration';
 import { useSessionHistory } from '../state/useHistory';
-import { focusHref, useArrival, useScrollToFocus } from '../state/useFocus';
+import { useArrival, useScrollToFocus } from '../state/useFocus';
 import { ROSTER, TRUCKS, TRUCK_STATE_LABEL, TRUCK_STATE_TONE } from '../mock/data';
 import { cn } from '../lib/cn';
 
@@ -177,6 +178,7 @@ export function PriorityQueue() {
   const phase = useDispatch((s) => s.phase);
   const lanes = useDispatch((s) => s.lanes);
   const summary = useDispatch((s) => s.summary);
+  const scored = useDispatch((s) => s.scored);
   const filters = useDispatch((s) => s.filters);
   const setFilters = useDispatch((s) => s.setFilters);
   const resetFilters = useDispatch((s) => s.resetFilters);
@@ -195,6 +197,32 @@ export function PriorityQueue() {
 
   const { tracks } = useSessionHistory();
   const durations = useMemo(() => durationIndex(tracks), [tracks]);
+
+  // The situation headline — the single worst thing on the network right now,
+  // ranked by severity across every lane. See src/model/situation.ts.
+  const activeRunIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of runs) if (r.completedAt === null) ids.add(r.stationId);
+    for (const [id, d] of Object.entries(dispositions)) if (d === 'dispatched') ids.add(id);
+    return ids;
+  }, [runs, dispositions]);
+  const raisedFaultIds = useMemo(() => new Set(dispatched), [dispatched]);
+  const situationNow = fetchedAtMs ?? Date.now();
+  const situation = useMemo(
+    () =>
+      assessSituation({
+        phase,
+        summary,
+        lanes,
+        networkDocks: networkDocks(scored),
+        hardware: hardwareTotals(hardwareLoad(scored, situationNow)),
+        tracks,
+        durations,
+        activeRunIds,
+        raisedFaultIds,
+      }),
+    [phase, summary, lanes, scored, situationNow, tracks, durations, activeRunIds, raisedFaultIds],
+  );
 
   const filtered = useMemo(() => applyFilters(lanes, filters), [lanes, filters]);
 
@@ -289,28 +317,6 @@ export function PriorityQueue() {
 
   useScrollToFocus(arrival.focus, rows.length > 0);
 
-  // Mechanical faults never reach this board at all — triage.ts routes them
-  // to Maintenance before the queue ever sees them, on the reasoning that a
-  // truck full of bikes cannot fix a dead dock. Correct, but it means a
-  // station stuck for hours can sit off-screen with nothing here pointing at
-  // it. This is the one thing that surfaces that gap back onto the page
-  // everyone actually watches.
-  const unflaggedFaults = useMemo(
-    () => lanes.mechanic.filter((f) => !dispatched.includes(f.station.stationId)),
-    [lanes.mechanic, dispatched],
-  );
-  const worstFault = useMemo(
-    () =>
-      unflaggedFaults.length === 0
-        ? null
-        : unflaggedFaults.reduce((oldest, f) =>
-            (f.breakdown.staleness.ageMinutes ?? 0) > (oldest.breakdown.staleness.ageMinutes ?? 0)
-              ? f
-              : oldest,
-          ),
-    [unflaggedFaults],
-  );
-
   const sort = (key: SortKey) =>
     setFilters(
       filters.sortKey === key
@@ -325,15 +331,17 @@ export function PriorityQueue() {
   return (
     <>
       <PageHeader
-        title="Priority Queue"
+        title="Rebalancing"
         subtitle={
           summary
-            ? `Every station a truck can fix, ranked by urgency — worst first. ${summary.total.toLocaleString('en-US')} stations monitored, refreshed every 60 seconds.`
+            ? `Stations too empty or too full for riders — the work a truck fixes by moving bikes, ranked worst-first. ${summary.total.toLocaleString('en-US')} monitored, refreshed every minute.`
             : 'Reading the live feed…'
         }
       />
 
       <PageBody>
+        <PageGuide id="rebalancing" />
+
         {arrival.focus && arrival.from && (
           <ArrivalBanner
             from={arrival.from}
@@ -365,34 +373,9 @@ export function PriorityQueue() {
           </div>
         )}
 
-        {worstFault && (
-          <div className="mb-3">
-            <Finding
-              icon="wrench"
-              tone="empty"
-              headline={
-                unflaggedFaults.length === 1
-                  ? '1 station needs a mechanic, not a truck — nobody has flagged it yet.'
-                  : `${unflaggedFaults.length} stations need a mechanic, not a truck — none flagged yet.`
-              }
-              detail={
-                <>
-                  Worst is {worstFault.station.name} ({worstFault.station.borough}) —{' '}
-                  {mechanicFault(worstFault).toLowerCase()}, reported{' '}
-                  {formatReportedAge(worstFault.breakdown.staleness.ageMinutes)}. Stations like this
-                  never appear in the board below; a truck full of bikes cannot fix a dead dock.{' '}
-                  <Link
-                    to={focusHref('/maintenance/orders', worstFault.station.stationId, 'Priority Queue', '/')}
-                    className="font-medium underline underline-offset-2"
-                    style={{ color: TONE.empty.fg }}
-                  >
-                    Open in Maintenance →
-                  </Link>
-                </>
-              }
-            />
-          </div>
-        )}
+        <div className="mb-3">
+          <SituationFinding situation={situation} />
+        </div>
 
         <StatRow summary={summary} onClear={resetFilters} onOnly={(c) => setFilters({ categories: [c] })} />
 

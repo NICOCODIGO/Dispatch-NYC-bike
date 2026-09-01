@@ -476,7 +476,7 @@ function StationPopup({
         className="mt-1.5 flex cursor-pointer items-center justify-center gap-1 text-[10px] text-[var(--color-ink-3)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
       >
         <Icon name="list-ordered" size={11} />
-        Find in the Priority Queue
+        Find in the rebalancing list
       </Link>
     </div>
   );

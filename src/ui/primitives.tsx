@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useId, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import { TipBody, TipTitle, Tooltip } from './Tooltip';
@@ -833,6 +833,12 @@ export function Banner({
    A console full of counts makes the reader do the interpreting. This states
    the conclusion in words, then shows the figures it was drawn from, so the
    page leads with a claim it is willing to defend rather than a wall of data.
+
+   The claim and the figures are always visible; the reasoning between them
+   folds away behind the chevron. A dispatcher who already knows why Broadway
+   is red should not have to read the paragraph again on every poll, and one
+   who doesn't is one click from it. Open by default — the explanation is the
+   point of the banner, so hiding it has to be the reader's choice.
 --------------------------------------------------------------------------- */
 
 export function Finding({
@@ -849,41 +855,74 @@ export function Finding({
   stats?: { label: string; value: ReactNode; tone?: Tone }[];
 }) {
   const t = TONE[tone];
+  const [open, setOpen] = useState(true);
+  const detailId = useId();
+  const showDetail = Boolean(detail) && open;
 
   return (
     <section
       className="rounded-lg border bg-[var(--color-surface)]"
       style={{ borderColor: t.line, borderLeft: `3px solid ${t.fg}` }}
     >
-      <div className="flex items-start gap-3 px-4 pt-3.5 pb-3">
+      <div className="flex items-center gap-2.5 px-3.5 py-2">
         <span
           aria-hidden="true"
-          className="mt-px flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md"
+          className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded"
           style={{ backgroundColor: t.bg, color: t.fg }}
         >
-          <Icon name={icon} size={14} />
+          <Icon name={icon} size={12} />
         </span>
-        <div className="min-w-0">
-          <p className="text-[13px] leading-snug font-semibold text-[var(--color-ink)]">
-            {linkifyNode(headline)}
-          </p>
-          {detail && (
-            <p className="mt-1 max-w-[100ch] text-[11px] leading-relaxed text-[var(--color-ink-2)]">
-              {/* The callouts are where the jargon is densest, so the prose
-                  teaches itself rather than relying on anyone remembering to
-                  wrap each term by hand. */}
-              {linkifyNode(detail)}
-            </p>
-          )}
-        </div>
+        {/* The claim alone, and it stays put — collapsing the detail must not
+            move the sentence the reader is already looking at. The jargon is
+            densest here, so `linkifyNode` teaches the prose in place. */}
+        <p className="min-w-0 flex-1 text-[12px] leading-normal font-semibold text-[var(--color-ink)]">
+          {linkifyNode(headline)}
+        </p>
+        {detail && (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            aria-controls={detailId}
+            aria-label={open ? 'Hide the explanation' : 'Show the explanation'}
+            className="-mr-1 shrink-0 self-start rounded p-1 text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]"
+          >
+            <Icon
+              name="chevron-down"
+              size={14}
+              className={cn('transition-transform duration-200', !open && '-rotate-90')}
+            />
+          </button>
+        )}
       </div>
 
+      {/* Height is animated by the 0fr → 1fr grid row rather than a guessed
+          max-height, so the curve is the same whether the reasoning is one
+          line or five. `inert` keeps the folded-away link out of the tab
+          order. The shared `.rail-ease` curve is the one the chrome rail
+          unfolds on, and reduced-motion drops it in `index.css`. */}
+      {detail && (
+        <div
+          id={detailId}
+          className="rail-ease grid px-3.5 transition-[grid-template-rows]"
+          style={{ gridTemplateRows: showDetail ? '1fr' : '0fr' }}
+          aria-hidden={!showDetail}
+          {...(!showDetail ? { inert: '' } : {})}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <p className="pb-2 pl-[30px] text-[12px] leading-normal text-[var(--color-ink-2)]">
+              {linkifyNode(detail)}
+            </p>
+          </div>
+        </div>
+      )}
+
       {stats && stats.length > 0 && (
-        <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[var(--color-line-soft)] px-4 py-2.5">
+        <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-[var(--color-line-soft)] px-3.5 py-1.5">
           {stats.map((s) => (
             <div key={s.label} className="flex items-baseline gap-1.5">
               <dd
-                className="num text-[13px] font-semibold"
+                className="num text-[12px] font-semibold"
                 style={{ color: TONE[s.tone ?? 'ink'].fg }}
               >
                 {s.value}

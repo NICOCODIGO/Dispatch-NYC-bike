@@ -1,8 +1,9 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PageBody, PageHeader } from '../shell/AppShell';
 import { Icon } from '../ui/Icon';
 import { BarRow } from '../ui/charts';
-import { Card, CardHead, FixtureNote } from '../ui/primitives';
+import { Card, CardHead, Finding, FixtureNote } from '../ui/primitives';
 import { TONE } from '../ui/tone';
 import { useConsole } from '../state/useConsole';
 import { useDispatch } from '../store/useDispatch';
@@ -24,6 +25,13 @@ import { CELLULAR, OUTAGE_FREQUENCY, REPORTING_HEALTH } from '../mock/data';
  */
 export function SiteHealth() {
   const silent = useDispatch((s) => s.lanes.unverified.length);
+  const workOrders = useConsole((s) => s.workOrders);
+  const powerOrders = useMemo(
+    () => workOrders.filter((o) => o.type === 'station-power' && isOpen(o)).length,
+    [workOrders],
+  );
+
+  const trouble = powerOrders > 0 || silent > 0;
 
   return (
     <>
@@ -33,7 +41,38 @@ export function SiteHealth() {
       />
 
       <PageBody>
-        <div className="grid gap-3.5 lg:grid-cols-3">
+        <Finding
+          icon="battery-low"
+          tone={powerOrders > 0 ? 'empty' : silent > 0 ? 'warn' : 'ok'}
+          headline={
+            powerOrders > 0
+              ? `${powerOrders} open power order${powerOrders === 1 ? '' : 's'} — a site has lost mains and is running on battery.`
+              : silent > 0
+                ? `${silent} station${silent === 1 ? ' is' : 's are'} silent — a flat site battery is the usual cause.`
+                : 'Every site is powered and reporting.'
+          }
+          detail={
+            trouble ? (
+              <>
+                The feed carries no battery reading, so charge is inferred from the consequence: a
+                site that loses power stops talking.{' '}
+                {silent > 0 && (
+                  <Link
+                    to="/monitoring/unverified"
+                    className="font-medium underline underline-offset-2"
+                    style={{ color: TONE.empty.fg }}
+                  >
+                    See the silent list →
+                  </Link>
+                )}
+              </>
+            ) : (
+              'No open power orders and no station past the reporting cutoff.'
+            )
+          }
+        />
+
+        <div className="mt-3.5 grid gap-3.5 lg:grid-cols-3">
           <ReportingHealth />
           <SitePower silent={silent} />
           <CellularCard />

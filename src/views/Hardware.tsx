@@ -17,7 +17,7 @@ import {
 /**
  * Where a mechanic or a swap van goes.
  *
- * The Priority Queue ranks stations a *truck* can fix and deliberately excludes
+ * The Rebalancing board ranks stations a *truck* can fix and deliberately excludes
  * hardware. This is the counterpart board: the same feed, ranked by the two
  * fields the queue throws away — `num_docks_disabled` and `num_bikes_disabled` —
  * plus the modelled low-charge count.
@@ -149,16 +149,18 @@ function HardwareFinding({
     );
   }
 
-  const stats: { label: string; value: ReactNode; tone?: Tone }[] = [
-    { label: 'dead docks', value: totals.deadDocks.toLocaleString('en-US'), tone: 'empty' },
-    { label: 'broken bikes', value: totals.brokenBikes.toLocaleString('en-US'), tone: 'warn' },
-  ];
+  const n = (v: number) => v.toLocaleString('en-US');
+  const stats: { label: string; value: ReactNode; tone?: Tone }[] = [];
+  if (totals.crippled > 0) {
+    stats.push({ label: 'rack gone', value: totals.crippled, tone: 'empty' });
+  }
+  stats.push({ label: 'dead docks', value: n(totals.deadDocks), tone: 'empty' });
+  stats.push({ label: 'broken bikes', value: n(totals.brokenBikes), tone: 'warn' });
   if (totals.lowCharge > 0) {
     stats.push({ label: 'flat batteries', value: totals.lowCharge, tone: 'warn' });
   }
-  stats.push({ label: 'sites', value: totals.stations });
-  if (totals.crippled > 0) {
-    stats.push({ label: 'mostly gone', value: totals.crippled, tone: 'empty' });
+  if (totals.siteFaults > 0) {
+    stats.push({ label: 'power/comms', value: totals.siteFaults });
   }
 
   return (
@@ -166,27 +168,34 @@ function HardwareFinding({
       icon="wrench"
       tone={totals.crippled > 0 ? 'empty' : 'warn'}
       headline={
-        <>
-          {totals.deadDocks.toLocaleString('en-US')} dock{totals.deadDocks === 1 ? '' : 's'} and{' '}
-          {totals.brokenBikes.toLocaleString('en-US')} bike{totals.brokenBikes === 1 ? '' : 's'} are
-          out of service across {totals.stations} station{totals.stations === 1 ? '' : 's'}.
-        </>
+        totals.crippled > 0 ? (
+          <>
+            {totals.crippled} station{totals.crippled === 1 ? ' has' : 's have'} most of the rack out
+            of service — a rebuild, not a repair.
+          </>
+        ) : (
+          <>
+            {n(totals.deadDocks)} dead dock{totals.deadDocks === 1 ? '' : 's'} and{' '}
+            {n(totals.brokenBikes)} disabled bike{totals.brokenBikes === 1 ? '' : 's'} on the board.
+          </>
+        )
       }
       detail={
         <>
-          None of this is a truck job — a van full of bikes cannot re-seat a dock or swap a battery
-          pack.{' '}
-          {totals.siteFaults > 0 && (
+          {totals.crippled > 0 && (
             <>
-              {totals.siteFaults} of the dead docks read as power or comms rather than mechanical,
-              which is a site visit rather than a dock repair.{' '}
+              Across the network, {n(totals.deadDocks)} docks and {n(totals.brokenBikes)} bikes are
+              out of service.{' '}
             </>
           )}
-          {totals.crippled > 0 && (
-            <strong className="font-semibold text-[var(--color-ink)]">
-              {totals.crippled} site{totals.crippled === 1 ? ' has' : 's have'} more than half the
-              rack down — a rebuild, not a repair.
-            </strong>
+          None of it is a truck job — a van full of bikes cannot re-seat a dock or swap a battery
+          pack.
+          {totals.siteFaults > 0 && (
+            <>
+              {' '}
+              {totals.siteFaults} of the dead docks read as power or comms — a site visit, not a dock
+              repair.
+            </>
           )}
         </>
       }
@@ -207,7 +216,7 @@ function HardwareRow({ row }: { row: HardwareLoad }) {
       <Td>
         {/* The name is a real button, not just a clickable row: a `<tr>` with an
             onClick is unreachable by keyboard, and this table is the only route
-            to several of these stations. Same pattern the Priority Queue uses. */}
+            to several of these stations. Same pattern the rebalancing board uses. */}
         <button
           type="button"
           onClick={(e) => {

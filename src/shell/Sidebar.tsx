@@ -58,7 +58,7 @@ const DISPATCH: NavSection = {
   label: 'Dispatch',
   icon: 'list-ordered',
   children: [
-    { to: '/', label: 'Priority Queue', icon: 'list-ordered', end: true },
+    { to: '/', label: 'Rebalancing', icon: 'list-ordered', end: true },
     { to: '/dispatch/map', label: 'Map', icon: 'map' },
     { to: '/dispatch/history', label: 'History', icon: 'clipboard-list' },
   ],

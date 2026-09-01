@@ -1,6 +1,7 @@
 /**
- * Network-level derivations: the status strip numbers, the failure breakdown,
- * and the one-sentence situation readout that heads the Queue.
+ * Network-level derivations: the status strip numbers and the failure
+ * breakdown. The one-line situation readout that heads the Queue is built from
+ * these in `src/model/situation.ts`.
  *
  * Everything here is computed from the *truck lane* unless explicitly named
  * otherwise. The board's headline question is "where does the truck go", so a
@@ -169,69 +170,9 @@ export function summarizeAll(scored: ScoredStation[]): NetworkSummary {
   return summarize(scored, triage(scored));
 }
 
-const n = (v: number) => v.toLocaleString('en-US');
-
-/**
- * The situation readout.
- *
- * An ops report, not a headline: plain sentences at body scale, no colored
- * words, no emphasis. It states the workload, which way it leans, where the
- * first truck goes, and — separately, because it is a different crew — what
- * needs a mechanic.
- */
-export function situationSentence(s: NetworkSummary): string {
-  if (s.ranked === 0) return 'No station data yet.';
-
-  const sentences: string[] = [];
-
-  if (s.needsTruck === 0) {
-    sentences.push(
-      s.networkFill === null
-        ? 'No station needs a truck right now.'
-        : `No station needs a truck right now — the network is ${Math.round(
-            s.networkFill * 100,
-          )}% full.`,
-    );
-  } else {
-    const lead = `${n(s.needsTruck)} station${s.needsTruck === 1 ? '' : 's'} need${
-      s.needsTruck === 1 ? 's' : ''
-    } a truck`;
-    sentences.push(
-      s.dominant
-        ? `${lead} — ${Math.round(s.dominant.share * 100)}% on the ${
-            s.dominant.signal === 'full' ? 'full' : 'empty'
-          } side.`
-        : `${lead}.`,
-    );
-
-    if (s.worstTruck) {
-      sentences.push(`The worst is ${s.worstTruck.name}.`);
-    }
-
-    if (s.worstTen && s.worstTen.count >= 3 && s.worstTen.borough !== 'Unknown') {
-      sentences.push(
-        `${s.worstTen.borough} holds ${s.worstTen.count} of the worst ${Math.min(
-          10,
-          s.needsTruck,
-        )}.`,
-      );
-    }
-  }
-
-  // Always a separate sentence: a different crew, a different vehicle.
-  const asides: string[] = [];
-  if (s.mechanic > 0) {
-    asides.push(`${n(s.mechanic)} need${s.mechanic === 1 ? 's' : ''} a mechanic`);
-  }
-  if (s.unverified > 0) {
-    asides.push(`${n(s.unverified)} ${s.unverified === 1 ? 'is' : 'are'} unverified`);
-  }
-  if (asides.length > 0) {
-    sentences.push(`Separately, ${asides.join(' and ')}.`);
-  }
-
-  return sentences.join(' ');
-}
+// The one-line situation readout moved to `src/model/situation.ts`, which ranks
+// the network's state by severity rather than always leading with the truck
+// workload. This module keeps the counts it draws from.
 
 // ---------------------------------------------------------------------------
 // Failure-mode rail

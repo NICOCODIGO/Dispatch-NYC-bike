@@ -77,7 +77,7 @@ export function Mechanics() {
 
   const pending = pendingCount(workOrders);
 
-  // A reader can arrive here from the Priority Queue's escalation banner,
+  // A reader can arrive here from the Rebalancing board's escalation banner,
   // pointed at one fault it flagged as unassigned. Mirrors the queue's own
   // arrival handling so Back and reload behave the same everywhere.
   const arrival = useArrival();
@@ -208,46 +208,44 @@ function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
   const loss = capacityLoss(faults, networkDocks(scored));
   const unraised = faults.filter((f) => !dispatched.includes(f.station.stationId)).length;
   const worst = loss.byBorough[0];
+  const n = (v: number) => v.toLocaleString('en-US');
 
   return (
     <Finding
       icon="wrench"
       tone={unraised > 0 ? 'empty' : 'warn'}
       headline={
-        <>
-          {loss.docks.toLocaleString('en-US')} docks are out of service across {loss.stations}{' '}
-          station{loss.stations === 1 ? '' : 's'}.
-        </>
+        unraised > 0 ? (
+          <>
+            {loss.stations} stations are out of service and {unraised} {unraised === 1 ? 'has' : 'have'}{' '}
+            no repair scheduled.
+          </>
+        ) : (
+          <>
+            {loss.stations} stations are out of service — every one has a repair on the board.
+          </>
+        )
       }
       detail={
         <>
-          That is {(loss.share * 100).toFixed(1)}% of the network switched off — capacity no truck
-          can restore, because moving bikes does not fix a station that is not renting or
-          returning. Sending one there is a wasted run, which is why they are routed off the queue
-          and onto this page.
+          {n(loss.docks)} docks switched off, {(loss.share * 100).toFixed(1)}% of the network — a
+          hole no truck fixes, because moving bikes cannot restart a station that is not renting or
+          returning.
           {worst && loss.byBorough.length > 1 && (
             <> {worst.borough} carries the most, with {worst.stations}.</>
-          )}
-          {unraised > 0 && (
-            <>
-              {' '}
-              <strong className="font-semibold text-[var(--color-ink)]">
-                {unraised} {unraised === 1 ? 'has' : 'have'} no work order yet.
-              </strong>
-            </>
           )}
         </>
       }
       stats={[
         { label: 'stations down', value: loss.stations, tone: 'empty' },
-        { label: 'docks offline', value: loss.docks.toLocaleString('en-US'), tone: 'empty' },
-        { label: 'of network', value: `${(loss.share * 100).toFixed(1)}%` },
-        { label: 'open orders', value: open.length },
         {
-          label: 'awaiting an order',
+          label: 'no repair yet',
           value: unraised,
           tone: unraised > 0 ? 'empty' : 'ok',
         },
+        { label: 'docks offline', value: n(loss.docks) },
+        { label: 'of network', value: `${(loss.share * 100).toFixed(1)}%` },
+        { label: 'open orders', value: open.length },
       ]}
     />
   );

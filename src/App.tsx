@@ -23,7 +23,7 @@ import { ZoneView } from './views/ZoneView';
  * /unverified…) still resolve: each is a redirect to its new home, so bookmarks
  * and any link that slipped through the rename keep working.
  *
- * Priority Queue and the station receipt run on the live GBFS feed, through
+ * Rebalancing and the station receipt run on the live GBFS feed, through
  * the adapter in `src/data/adapt.ts`. The remaining screens still render from
  * fixtures in `src/mock` — mostly because the feed has nothing to give them:
  * there are no vehicles, tickets or hardware telemetry in GBFS.

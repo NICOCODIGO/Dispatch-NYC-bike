@@ -254,24 +254,20 @@ function WorkloadFinding({
       }
       detail={
         <>
-          {demand.deficit.toLocaleString('en-US')} bikes need delivering to{' '}
-          {demand.stationsShort} stations that are running dry, and{' '}
-          {demand.surplus.toLocaleString('en-US')} need collecting from {demand.stationsOver} that
-          have no room left. {demand.relocatable.toLocaleString('en-US')} of those can be handled
-          by moving bikes between stations; the rest has to come from or go to a depot. At{' '}
-          {truckCapacity} bikes a vehicle that is {truckloads.toLocaleString('en-US')} loads
+          {demand.deficit.toLocaleString('en-US')} bikes to deliver, {demand.surplus.toLocaleString('en-US')}{' '}
+          to collect — {demand.relocatable.toLocaleString('en-US')} of that just moves between
+          stations, the rest runs through a depot.
           {idle > 0 && (
             <>
-              , and {idle * truckCapacity} bikes of carrying capacity is sitting at a depot right
-              now
+              {' '}
+              <strong className="font-semibold text-[var(--color-ink)]">
+                {(idle * truckCapacity).toLocaleString('en-US')} bikes of carrying capacity is parked
+                at a depot right now.
+              </strong>
             </>
-          )}
-          .{' '}
-          <strong className="font-semibold">
-            This is not one truck per station — a single load is emptied across several stops
-          </strong>
-          , which is why {needsTruck.toLocaleString('en-US')} stations needing attention does not
-          mean {needsTruck.toLocaleString('en-US')} trips.
+          )}{' '}
+          One load is emptied across several stops, so {truckloads.toLocaleString('en-US')} loads —
+          not {needsTruck.toLocaleString('en-US')} — is the real trip count.
         </>
       }
       stats={[
