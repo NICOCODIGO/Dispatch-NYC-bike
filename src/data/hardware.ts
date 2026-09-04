@@ -6,8 +6,8 @@ import type { Borough } from './boroughs';
 /**
  * Where a mechanic or a swap van should go.
  *
- * The Rebalancing board answers "where does the next *truck* go" and deliberately
- * excludes hardware — a truck full of bikes cannot fix a dead dock. That was
+ * The Rebalancing board answers "where does the next *vehicle* go" and deliberately
+ * excludes hardware — a vehicle full of bikes cannot fix a dead dock. That was
  * always right, and it left the opposite question unanswered: two real fields
  * in the feed, `num_docks_disabled` and `num_bikes_disabled`, were parsed on
  * every poll and read by exactly one tooltip.

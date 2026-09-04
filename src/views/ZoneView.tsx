@@ -44,14 +44,14 @@ export function ZoneView() {
   // Arrow, not a bare reference: `map` passes the index as the second argument
   // and `toStationRow` now takes a duration there.
   const ranked = live ? live.ranked.slice(0, 8).map((s) => toStationRow(s)) : d.ranked;
-  const needsDispatch = live ? live.needsTruck : d.needsDispatch;
+  const needsDispatch = live ? live.needsVehicle : d.needsDispatch;
   const avgFill = live?.avgFill ?? d.avgFill;
 
   return (
     <>
       <PageHeader
         title={`${zone.name} Operations`}
-        subtitle={`${zone.stations.toLocaleString('en-US')} stations, ${needsDispatch} of them needing a truck right now${live ? `. ${live.unverified} not reporting, ${live.mechanic} mechanically out of service.` : '.'}`}
+        subtitle={`${zone.stations.toLocaleString('en-US')} stations, ${needsDispatch} of them needing a vehicle right now${live ? `. ${live.unverified} not reporting, ${live.mechanic} mechanically out of service.` : '.'}`}
         actions={
           <>
             <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-1.5 text-[11px] text-[var(--color-ink-2)]">
@@ -60,8 +60,8 @@ export function ZoneView() {
                 {avgFill === null ? '–' : `${Math.round(avgFill * 100)}%`}
               </span>
             </span>
-            <Button variant="dark" notBuilt="Would dedicate a truck to this zone for the shift.">
-              Assign Zone Truck
+            <Button variant="dark" notBuilt="Would dedicate a vehicle to this zone for the shift.">
+              Assign Zone Vehicle
             </Button>
           </>
         }
@@ -189,7 +189,7 @@ export function ZoneView() {
                             <TipTitle>{s.name}</TipTitle>
                             <TipBody>
                               The full receipt — every step of how this station&rsquo;s urgency
-                              was calculated, and what a truck should do when it arrives.
+                              was calculated, and what a vehicle should do when it arrives.
                             </TipBody>
                             <TipAction>Opens the score breakdown</TipAction>
                           </>

@@ -83,7 +83,7 @@ function input(stations: JoinedStation[], over: Partial<SituationInput> = {}): S
   };
 }
 
-/** A session track + matching duration entry for one truck-lane station. */
+/** A session track + matching duration entry for one vehicle-lane station. */
 function stuckTrack(
   s: JoinedStation,
   opts: { score: number; minutes: number; delta?: number; confident?: boolean },
@@ -119,17 +119,17 @@ describe('assessSituation — severity ranking', () => {
     expect(assessSituation(input([], { phase: 'loading' })).kind).toBe('loading');
   });
 
-  it('is clear when nothing needs a truck', () => {
+  it('is clear when nothing needs a vehicle', () => {
     const s = assessSituation(input([HEALTHY(), HEALTHY()]));
     expect(s.kind).toBe('clear');
   });
 
-  it('falls back to the worst station when there is only routine truck work', () => {
+  it('falls back to the worst station when there is only routine vehicle work', () => {
     const s = assessSituation(input([EMPTY(), EMPTY(), HEALTHY()]));
     expect(s.kind).toBe('worst');
   });
 
-  it('an unraised out-of-service station outranks routine truck work', () => {
+  it('an unraised out-of-service station outranks routine vehicle work', () => {
     const s = assessSituation(input([EMPTY(), EMPTY(), BROKEN()]));
     expect(s.kind).toBe('faults-unraised');
   });
@@ -206,7 +206,7 @@ describe('assessSituation — critical-stuck gates', () => {
     expect(s.kind).not.toBe('critical-stuck');
   });
 
-  it('ignores a stuck station that already has a truck on the way', () => {
+  it('ignores a stuck station that already has a vehicle on the way', () => {
     const c = crit();
     const { track, duration } = stuckTrack(c, { score: 90, minutes: 130 });
     const s = assessSituation(

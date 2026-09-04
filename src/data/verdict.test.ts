@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD, type ScoreBreakdown } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD, type ScoreBreakdown } from '../model/score';
 import { toneForScore } from '../ui/tone';
-import { VERDICT_LINE, verdictFor, wantsTruck } from './verdict';
+import { VERDICT_LINE, verdictFor, wantsVehicle } from './verdict';
 
-const T = NEEDS_TRUCK_THRESHOLD;
+const T = NEEDS_VEHICLE_THRESHOLD;
 const C = CRITICAL_THRESHOLD;
 
-/** A scored, fresh, truck-lane breakdown. Overridden per case. */
+/** A scored, fresh, vehicle-lane breakdown. Overridden per case. */
 function breakdown(over: Partial<ScoreBreakdown> = {}): ScoreBreakdown {
   return {
     scored: true,
@@ -39,9 +39,9 @@ describe('verdictFor', () => {
   describe('lane beats score', () => {
     /**
      * The regression this module exists for. An unverified station can compute
-     * a high score off stale counts while `needsTruck` stays false, which is
+     * a high score off stale counts while `needsVehicle` stays false, which is
      * how the drawer once rendered "Urgency score 100 / 100" directly above
-     * "Below the 55-point threshold. No truck needed yet."
+     * "Below the 55-point threshold. No vehicle needed yet."
      */
     it('calls a high-scoring unverified station excluded, not urgent', () => {
       const b = breakdown({ staleness: { notReporting: true, ageMinutes: 240, penalty: 10 } as never });
@@ -58,12 +58,12 @@ describe('verdictFor', () => {
     });
   });
 
-  it('only sends a truck for the two lines above the dispatch threshold', () => {
-    expect(wantsTruck('critical')).toBe(true);
-    expect(wantsTruck('dispatch')).toBe(true);
-    expect(wantsTruck('below')).toBe(false);
-    expect(wantsTruck('unverified')).toBe(false);
-    expect(wantsTruck('mechanic')).toBe(false);
+  it('only sends a vehicle for the two lines above the dispatch threshold', () => {
+    expect(wantsVehicle('critical')).toBe(true);
+    expect(wantsVehicle('dispatch')).toBe(true);
+    expect(wantsVehicle('below')).toBe(false);
+    expect(wantsVehicle('unverified')).toBe(false);
+    expect(wantsVehicle('mechanic')).toBe(false);
   });
 
   it('has a line for every kind', () => {

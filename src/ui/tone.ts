@@ -5,7 +5,7 @@
  * KPI deltas, donut slices — resolves its color through this one table, so a
  * palette change is a change in exactly one place.
  */
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 
 /**
  * Warm tones are empty-side problems (nobody can rent), cool tones are
@@ -94,6 +94,6 @@ export const TONE: Record<Tone, ToneSpec> = {
 export function toneForScore(score: number | null): Tone {
   if (score === null) return 'mute';
   if (score >= CRITICAL_THRESHOLD) return 'empty';
-  if (score >= NEEDS_TRUCK_THRESHOLD) return 'warn';
+  if (score >= NEEDS_VEHICLE_THRESHOLD) return 'warn';
   return 'ok';
 }

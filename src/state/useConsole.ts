@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ACTIVITY_LOG, WORK_ORDERS, type ActivityEntry } from '../mock/data';
 import { isOpen, type WorkOrder, type WorkOrderType } from '../model/workOrder';
+import type { TriageLog, TriageOutcome } from '../model/pickup';
 import {
   outcomeOf,
   runSummary,
@@ -109,7 +110,17 @@ interface ConsoleState {
   setDisposition: (stationId: string, name: string, next: Disposition | null) => void;
 
   /**
-   * Which truck was sent where, keyed by truck id.
+   * Field checks logged this session, keyed by frame number.
+   *
+   * An overlay rather than an edit: the rack is derived from the feed and has
+   * to stay reproducible across polls, so a mechanic's verdict is recorded
+   * beside it and applied by `applyTriage` at read time.
+   */
+  triage: TriageLog;
+  triageBike: (bikeId: string, stationName: string, outcome: TriageOutcome) => void;
+
+  /**
+   * Which vehicle was sent where, keyed by vehicle id.
    *
    * Invented, like the fleet itself — but invented *consistently*: once a
    * coordinator sends #2 to a station, Fleet Operations shows #2 carrying that
@@ -117,23 +128,23 @@ interface ConsoleState {
    * fixture that changes when you act on it is worth more than a fixture that
    * sits still, because it exercises the real shape of the workflow.
    */
-  assignments: Record<string, TruckAssignment>;
-  dispatchTruck: (req: DispatchRequest) => void;
+  assignments: Record<string, VehicleAssignment>;
+  dispatchVehicle: (req: DispatchRequest) => void;
 
   /**
-   * Every truck sent, with the station captured before and after.
+   * Every vehicle sent, with the station captured before and after.
    *
    * Kept separate from `assignments` because an assignment is *current* — one
-   * per truck, overwritten on re-tasking — while a run is a historical fact
-   * that must survive the truck being sent somewhere else.
+   * per vehicle, overwritten on re-tasking — while a run is a historical fact
+   * that must survive the vehicle being sent somewhere else.
    */
   runs: DispatchRun[];
   completeRun: (runId: string, after: RunSnapshot, auto: boolean) => void;
   cancelRun: (runId: string) => void;
 }
 
-export interface TruckAssignment {
-  truckId: string;
+export interface VehicleAssignment {
+  vehicleId: string;
   stationId: string;
   stationName: string;
   borough: string;
@@ -143,7 +154,7 @@ export interface TruckAssignment {
 }
 
 export interface DispatchRequest {
-  truckId: string;
+  vehicleId: string;
   depot: string;
   stationId: string;
   stationName: string;
@@ -207,6 +218,26 @@ export const useConsole = create<ConsoleState>((set, get) => ({
     }));
   },
 
+  triage: {},
+
+  triageBike: (bikeId, stationName, outcome) =>
+    set((s) => {
+      // Logged like any other judgement. "No fault found" is the entry that
+      // matters most here: it is the only record that a report was checked and
+      // was wrong, and without it a shift of false alarms looks identical to a
+      // shift of real breakages.
+      const entry: ActivityEntry = {
+        who: 'Ops Center',
+        verb: outcome === 'no-fault' ? 'found no fault on' : 'confirmed the fault on',
+        what: `${bikeId} at ${stationName}`,
+        time: clock(),
+        where: 'Station assets',
+        tone: outcome === 'no-fault' ? 'ok' : 'warn',
+      };
+
+      return { triage: { ...s.triage, [bikeId]: outcome }, activity: [entry, ...s.activity] };
+    }),
+
   dispositions: {},
 
   setDisposition: (stationId, name, next) =>
@@ -231,14 +262,14 @@ export const useConsole = create<ConsoleState>((set, get) => ({
 
   assignments: {},
 
-  dispatchTruck: (req) =>
+  dispatchVehicle: (req) =>
     set((s) => {
       const at = clock();
       const sentAt = Date.now();
 
       const entry: ActivityEntry = {
         who: 'Ops Center',
-        verb: `sent Truck ${req.truckId} to`,
+        verb: `sent Vehicle ${req.vehicleId} to`,
         what: `${req.stationName} — ${req.instruction}.`,
         time: at,
         where: req.borough,
@@ -246,8 +277,8 @@ export const useConsole = create<ConsoleState>((set, get) => ({
       };
 
       const run: DispatchRun = {
-        id: `${req.truckId}:${sentAt}`,
-        truckId: req.truckId,
+        id: `${req.vehicleId}:${sentAt}`,
+        vehicleId: req.vehicleId,
         depot: req.depot,
         stationId: req.stationId,
         stationName: req.stationName,
@@ -265,8 +296,8 @@ export const useConsole = create<ConsoleState>((set, get) => ({
       return {
         assignments: {
           ...s.assignments,
-          [req.truckId]: {
-            truckId: req.truckId,
+          [req.vehicleId]: {
+            vehicleId: req.vehicleId,
             stationId: req.stationId,
             stationName: req.stationName,
             borough: req.borough,
@@ -274,7 +305,7 @@ export const useConsole = create<ConsoleState>((set, get) => ({
             at,
           },
         },
-        // Sending a truck *is* a disposition. Making the coordinator set it
+        // Sending a vehicle *is* a disposition. Making the coordinator set it
         // separately would guarantee the two drift apart.
         dispositions: { ...s.dispositions, [req.stationId]: 'dispatched' },
         activity: [entry, ...s.activity],
@@ -294,17 +325,17 @@ export const useConsole = create<ConsoleState>((set, get) => ({
 
       const entry: ActivityEntry = {
         who: auto ? 'System' : 'Ops Center',
-        verb: auto ? `closed Truck ${run.truckId}'s run at` : `marked Truck ${run.truckId} done at`,
+        verb: auto ? `closed Vehicle ${run.vehicleId}'s run at` : `marked Vehicle ${run.vehicleId} done at`,
         what: `${run.stationName} — ${runSummary(done) ?? 'no reading'}.`,
         time: clock(),
         where: run.borough,
         tone: outcome === 'recovered' ? 'ok' : outcome === 'worse' ? 'empty' : 'warn',
       };
 
-      // A finished run releases the truck; leaving the assignment in place
+      // A finished run releases the vehicle; leaving the assignment in place
       // would show a vehicle permanently committed to a job it has done.
       const assignments = { ...s.assignments };
-      if (assignments[run.truckId]?.stationId === run.stationId) delete assignments[run.truckId];
+      if (assignments[run.vehicleId]?.stationId === run.stationId) delete assignments[run.vehicleId];
 
       return {
         runs: s.runs.map((r) => (r.id === runId ? done : r)),
@@ -318,7 +349,7 @@ export const useConsole = create<ConsoleState>((set, get) => ({
       const run = s.runs.find((r) => r.id === runId);
       if (!run) return s;
       const assignments = { ...s.assignments };
-      if (assignments[run.truckId]?.stationId === run.stationId) delete assignments[run.truckId];
+      if (assignments[run.vehicleId]?.stationId === run.stationId) delete assignments[run.vehicleId];
       const dispositions = { ...s.dispositions };
       if (dispositions[run.stationId] === 'dispatched') delete dispositions[run.stationId];
       return { runs: s.runs.filter((r) => r.id !== runId), assignments, dispositions };

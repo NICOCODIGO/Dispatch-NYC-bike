@@ -2,31 +2,19 @@ import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { StationDrawerHost } from './StationDrawerHost';
 import { RunWatcher } from './RunWatcher';
-import { useSidebar } from '../state/useSidebar';
-import { useCoarsePointer } from '../lib/media';
 import { cn } from '../lib/cn';
 
 /**
  * Rail plus scrolling work area.
  *
- * The rail rests at ~56px and peeks open on hover; the main column is the only
+ * The rail holds a fixed width in the flex flow and the main column is the only
  * thing that scrolls, so the nav, the live indicator and the account row stay
  * put no matter how long a table runs — the behaviour of a console someone sits
  * in front of all shift, not a page they read top to bottom.
- *
- * The rail is positioned out of flow. This `spacer` reserves its footprint so
- * the content never sits under a *pushing* rail — collapsed and pinned-overlay
- * reserve only the 56px stub and let the panel float over the board; pinned-push
- * (and any touch device) reserves the full width so content flows beside it.
  */
 export function AppShell({ children }: { children: ReactNode }) {
-  const pinned = useSidebar((s) => s.pinned);
-  const layout = useSidebar((s) => s.layout);
-  const coarse = useCoarsePointer();
-  const inline = coarse || (pinned && layout === 'push');
-
   return (
-    <div className="relative flex h-screen overflow-hidden bg-[var(--color-canvas)]">
+    <div className="flex h-screen overflow-hidden bg-[var(--color-canvas)]">
       <a
         href="#main"
         className="sr-only bg-[var(--color-ink)] px-4 py-2 text-white focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-md"
@@ -34,15 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
 
-      <Sidebar forceExpanded={coarse} />
-
-      <div
-        aria-hidden="true"
-        className={cn(
-          'shrink-0 transition-[width] duration-150 ease-out',
-          inline ? 'w-[200px]' : 'w-14',
-        )}
-      />
+      <Sidebar />
 
       <div id="main" className="thin-scroll min-w-0 flex-1 overflow-y-auto">
         {children}
@@ -88,8 +68,13 @@ export function PageHeader({
         <h1 className="text-[21px] leading-none font-semibold tracking-[-0.015em] text-[var(--color-ink)]">
           {title}
         </h1>
+        {/* 12px at ink-2 read as fine print and got skipped — which matters
+            more now that the page's whole explanation lives here rather than in
+            a banner below. Bumped to 12.5px and the darker ink-2 sits at 5.09:1
+            against the canvas: still clearly secondary to the title, no longer
+            something the eye slides off. */}
         {subtitle && (
-          <p className="mt-1.5 max-w-[92ch] text-[12px] leading-relaxed text-[var(--color-ink-2)]">
+          <p className="mt-1.5 max-w-[92ch] text-[12.5px] leading-relaxed text-[var(--color-ink-2)]">
             {subtitle}
           </p>
         )}

@@ -25,7 +25,7 @@ export const DEFINITIONS: Record<string, Definition> = {
   flooded: {
     plain:
       'The station is nearly full, so a rider arriving has almost nowhere to park. Nothing to do with water.',
-    mechanism: 'At or above 85% of the slots it reports usable. A truck fixes it by collecting bikes.',
+    mechanism: 'At or above 85% of the slots it reports usable. A vehicle fixes it by collecting bikes.',
   },
   full: {
     plain: 'The station has no free docks at all. A rider arriving has to ride on and find another.',
@@ -33,7 +33,7 @@ export const DEFINITIONS: Record<string, Definition> = {
   },
   empty: {
     plain: 'The station has no bikes. Somebody walking up to rent one leaves with nothing.',
-    mechanism: 'Zero bikes reported. A truck fixes it by dropping bikes off.',
+    mechanism: 'Zero bikes reported. A vehicle fixes it by dropping bikes off.',
   },
   'low stock': {
     plain: 'Nearly out of bikes — there are a few left, but the next few riders may find none.',
@@ -47,7 +47,7 @@ export const DEFINITIONS: Record<string, Definition> = {
     plain:
       'The station has gone quiet, so nobody knows what is actually there. Its numbers are not trusted and it is kept out of the ranking.',
     mechanism:
-      'No report for over 60 minutes. Sending a truck on an hour-old reading is how you drive to a station that fixed itself.',
+      'No report for over 60 minutes. Sending a vehicle on an hour-old reading is how you drive to a station that fixed itself.',
   },
   'not reporting': {
     plain: 'The station has stopped checking in, so its bike counts cannot be believed.',
@@ -58,8 +58,8 @@ export const DEFINITIONS: Record<string, Definition> = {
     mechanism: 'Time since last report, minus the 60-minute cutoff.',
   },
   pressure: {
-    plain: 'The share of a borough that needs a truck right now. High pressure means the trouble is concentrated there.',
-    mechanism: 'Stations needing a truck divided by all stations in that borough.',
+    plain: 'The share of a borough that needs a vehicle right now. High pressure means the trouble is concentrated there.',
+    mechanism: 'Stations needing a vehicle divided by all stations in that borough.',
   },
   'capacity weight': {
     plain:
@@ -95,7 +95,7 @@ export const DEFINITIONS: Record<string, Definition> = {
     mechanism: 'Bikes available divided by usable slots, across every reporting station.',
   },
   outage: {
-    plain: 'The station is switched off or refusing rentals. A truck full of bikes cannot help.',
+    plain: 'The station is switched off or refusing rentals. A vehicle full of bikes cannot help.',
     mechanism: 'Operator flags say not renting, not returning, or no usable slots.',
   },
   unusable: {
@@ -109,13 +109,19 @@ export const DEFINITIONS: Record<string, Definition> = {
       'Bikes moved divided by bikes ordered, across completed runs. A crew that reliably delivers 60% of an order is not one you can plan around.',
   },
   'recovery rate': {
-    plain: 'How often sending a truck actually pushed the station back under the threshold.',
+    plain: 'How often sending a vehicle actually pushed the station back under the threshold.',
     mechanism: 'Recovered runs divided by completed runs. The only evidence a dispatch was the right call.',
+  },
+  cleared: {
+    plain:
+      'Of the stations that have gone bad since you opened the board, how many are back to normal — whether or not anyone was sent.',
+    mechanism:
+      'Shown as a count of a running list: every station that crosses the dispatch line this session is added, and it never shrinks. Counts stations rather than trips, so a station riders happened to even out counts the same as one a vehicle fixed. That is what separates it from the recovery rate, which divides recovered runs by completed runs and is strictly about whether our own vehicles worked.',
   },
 
   /* --- The two crews, and the words for what they drive and fix ---------- */
 
-  truck: {
+  vehicle: {
     plain:
       'Takes bikes from somewhere too full and delivers them somewhere too empty. It does not repair anything.',
   },
@@ -125,7 +131,7 @@ export const DEFINITIONS: Record<string, Definition> = {
   },
   mechanic: {
     plain:
-      'A technician who repairs broken hardware — a jammed dock, a frozen kiosk, a station that will not accept rentals. Sending a truck to these is a wasted trip.',
+      'A technician who repairs broken hardware — a jammed dock, a frozen kiosk, a station that will not accept rentals. Sending a vehicle to these is a wasted trip.',
     mechanism: 'Handles the outage and unusable lanes, which are routed off the queue.',
   },
   station: {
@@ -137,15 +143,15 @@ export const DEFINITIONS: Record<string, Definition> = {
   },
   idle: {
     plain: 'Parked at a depot with no job assigned. The driver is available and the vehicle is doing nothing.',
-    mechanism: 'The state that costs you — a truck sitting still while stations are over the threshold.',
+    mechanism: 'The state that costs you — a vehicle sitting still while stations are over the threshold.',
   },
   'en route': {
     plain: 'Driving between two points, either carrying bikes to a drop-off or heading to collect some.',
   },
   loading: {
     plain:
-      'Physically moving bikes on or off the truck — taking stock on at a depot, or collecting from a station that is too full. Not travelling.',
-    mechanism: 'Worth its own state because it takes real time; a truck loading cannot be redirected.',
+      'Physically moving bikes on or off the vehicle — taking stock on at a depot, or collecting from a station that is too full. Not travelling.',
+    mechanism: 'Worth its own state because it takes real time; a vehicle loading cannot be redirected.',
   },
 };
 

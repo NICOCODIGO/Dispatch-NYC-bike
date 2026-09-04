@@ -8,7 +8,7 @@
  * the math that ranked the queue: there is no second copy of this formula
  * anywhere in the UI.
  *
- * The model answers one question — "how badly does this station need a truck
+ * The model answers one question — "how badly does this station need a vehicle
  * right now" — and deliberately does not model demand, time of day or weather.
  * Those would make it more accurate and much harder to trust; a dispatcher who
  * cannot audit the number will not act on it.
@@ -31,8 +31,8 @@ export type StationCategory =
   | 'healthy';
 
 /** Which failure signal a category reads as. Empty-side problems (red) need a
- *  truck to *drop off*; full-side problems (indigo) need a truck to *pick up*.
- *  Mechanical problems (ink) need a mechanic — a truck full of bikes does not
+ *  vehicle to *drop off*; full-side problems (indigo) need a vehicle to *pick up*.
+ *  Mechanical problems (ink) need a mechanic — a vehicle full of bikes does not
  *  help — which is why they are not on the red/indigo supply gradient at all. */
 export type Signal = 'empty' | 'full' | 'outage' | 'ok';
 
@@ -162,14 +162,14 @@ export const STALENESS_MAX_PENALTY = 10;
 
 /**
  * Past {@link STALENESS_MAX_MINUTES} the station is marked Not reporting: still
- * shown, visually flagged, and excluded from the "needs a truck" count. Sending
- * a truck on an hour-old reading is how you drive to a station that fixed
+ * shown, visually flagged, and excluded from the "needs a vehicle" count. Sending
+ * a vehicle on an hour-old reading is how you drive to a station that fixed
  * itself forty minutes ago.
  */
 export const NOT_REPORTING_AFTER_MINUTES = STALENESS_MAX_MINUTES;
 
-/** Score at or above which a station is counted as needing a truck. */
-export const NEEDS_TRUCK_THRESHOLD = 55;
+/** Score at or above which a station is counted as needing a vehicle. */
+export const NEEDS_VEHICLE_THRESHOLD = 55;
 
 /**
  * Score at or above which a station is called critical rather than merely
@@ -181,7 +181,7 @@ export const NEEDS_TRUCK_THRESHOLD = 55;
  * the score. An undisclosed constant inside a transparency feature costs more
  * than the constant is worth, so it is named here and read from both places.
  *
- * Deliberately independent of {@link NEEDS_TRUCK_THRESHOLD} rather than derived
+ * Deliberately independent of {@link NEEDS_VEHICLE_THRESHOLD} rather than derived
  * as `threshold + 15`. They answer different questions — one is "is this worth
  * a trip", the other is "does this jump the queue" — and tying them together
  * would silently move the critical band every time somebody tuned the dispatch
@@ -247,7 +247,7 @@ export interface ScoreBreakdown {
   /** Final, clamped and rounded 0-100. */
   score: number;
   /** Score >= threshold, is scored, and is actually reporting. */
-  needsTruck: boolean;
+  needsVehicle: boolean;
 
   /** Every contribution, largest absolute first. Drives the hover card. */
   factors: ScoreFactor[];
@@ -406,7 +406,7 @@ export function scoreStation(
 
   if (status.lastReportedMs === null) {
     // No usable timestamp at all. We cannot vouch for these counts, so the
-    // station carries full uncertainty and is kept out of the truck count.
+    // station carries full uncertainty and is kept out of the vehicle count.
     notReporting = true;
     penalty = scored ? STALENESS_MAX_PENALTY : 0;
     reason = 'never-reported';
@@ -489,7 +489,7 @@ export function scoreStation(
     },
     weighted,
     score,
-    needsTruck: scored && !notReporting && score >= NEEDS_TRUCK_THRESHOLD,
+    needsVehicle: scored && !notReporting && score >= NEEDS_VEHICLE_THRESHOLD,
     factors,
   };
 }

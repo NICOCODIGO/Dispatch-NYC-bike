@@ -23,7 +23,7 @@ import { focusHref } from '../state/useFocus';
 import { useConsole } from '../state/useConsole';
 import { stuckStations, useSessionHistory } from '../state/useHistory';
 import { boroughRollup } from '../data/insights';
-import { OUTCOME_LABEL } from '../model/verify';
+import { OUTCOME_LABEL, recoveryBand, recoveryRate } from '../model/verify';
 import { useDispatch } from '../store/useDispatch';
 import { formatAgo } from '../lib/time';
 import { DEMAND_ACTUAL, DEMAND_PREDICTED, DEMAND_X_LABELS, KPIS } from '../mock/data';
@@ -176,20 +176,21 @@ function RecoveryFinding({
     );
   }
 
-  // The verdict is the ratio, not the raw count: two recoveries out of three is
-  // a network being managed, two out of forty is a network being watched.
-  const share = resolved / flagged;
-  const tone: Tone = share >= 0.4 ? 'ok' : share >= 0.15 ? 'warn' : 'empty';
+  // Share and bands both come from the model, so this finding and the queue's
+  // Recovering card cannot draw opposite verdicts from the same session.
+  const share = recoveryRate(outcomes) ?? 0;
+  const band = recoveryBand(share);
+  const tone: Tone = band === 'healthy' ? 'ok' : band === 'weak' ? 'warn' : 'empty';
   const verdict =
-    share >= 0.4
+    band === 'healthy'
       ? 'Most of what was flagged is recovering.'
-      : share >= 0.15
+      : band === 'weak'
         ? 'Some recovery, but most flagged stations are still failing.'
         : 'Almost nothing flagged this session has recovered.';
 
   return (
     <Finding
-      icon={share >= 0.4 ? 'trending-down' : 'trending-up'}
+      icon={band === 'healthy' ? 'trending-down' : 'trending-up'}
       tone={tone}
       headline={verdict}
       detail={
@@ -403,8 +404,8 @@ function BoroughPressure({ scored }: { scored: ReturnType<typeof useDispatch.get
           <h2 className="text-[13px] font-semibold text-[var(--color-ink)]">Pressure by borough</h2>
           <p className="mt-0.5 text-[10px]" style={{ color: TONE.warn.fg }}>
             {worst
-              ? `${worst.borough} is carrying the most trouble — ${Math.round(worst.pressure * 100)}% of its stations need a truck`
-              : 'Share of each borough that needs a truck right now'}
+              ? `${worst.borough} is carrying the most trouble — ${Math.round(worst.pressure * 100)}% of its stations need a vehicle`
+              : 'Share of each borough that needs a vehicle right now'}
           </p>
         </div>
       </div>
@@ -417,7 +418,7 @@ function BoroughPressure({ scored }: { scored: ReturnType<typeof useDispatch.get
               Stations
             </Th>
             <Th width={120} align="right">
-              Needs a truck
+              Needs a vehicle
             </Th>
             <Th width={100} align="right">
               Avg fill
@@ -437,7 +438,7 @@ function BoroughPressure({ scored }: { scored: ReturnType<typeof useDispatch.get
                 </Td>
                 <Td align="right">
                   <span className="num text-[11px]" style={{ color: TONE[tone].fg }}>
-                    {r.needsTruck}
+                    {r.needsVehicle}
                   </span>
                 </Td>
                 <Td align="right">

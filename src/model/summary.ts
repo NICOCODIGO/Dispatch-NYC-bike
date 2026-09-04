@@ -3,11 +3,11 @@
  * breakdown. The one-line situation readout that heads the Queue is built from
  * these in `src/model/situation.ts`.
  *
- * Everything here is computed from the *truck lane* unless explicitly named
- * otherwise. The board's headline question is "where does the truck go", so a
+ * Everything here is computed from the *vehicle lane* unless explicitly named
+ * otherwise. The board's headline question is "where does the vehicle go", so a
  * broken dock must not inflate the number a dispatcher plans their shift
  * around. Mechanic and unverified counts are reported separately, never folded
- * into the truck total.
+ * into the vehicle total.
  */
 
 import type { JoinedStation } from '../data/gbfs';
@@ -19,7 +19,7 @@ import {
   type StationCategory,
   scoreStation,
 } from './score';
-import { QUIET_CATEGORIES, TRUCK_CATEGORIES, triage, type Triaged } from './triage';
+import { QUIET_CATEGORIES, VEHICLE_CATEGORIES, triage, type Triaged } from './triage';
 
 export interface ScoredStation {
   station: JoinedStation;
@@ -32,15 +32,15 @@ export interface NetworkSummary {
   /** Stations that were actually ranked (installed). */
   ranked: number;
 
-  /** Truck-lane stations at or above the threshold — the shift's workload. */
-  needsTruck: number;
-  /** Every truck-lane station, including those below the threshold. */
-  truckLane: number;
-  /** Of `needsTruck`, which way they are failing. */
+  /** Vehicle-lane stations at or above the threshold — the shift's workload. */
+  needsVehicle: number;
+  /** Every vehicle-lane station, including those below the threshold. */
+  vehicleLane: number;
+  /** Of `needsVehicle`, which way they are failing. */
   emptySide: number;
   fullSide: number;
 
-  /** Routed elsewhere. Never part of the truck numbers. */
+  /** Routed elsewhere. Never part of the vehicle numbers. */
   mechanic: number;
   unverified: number;
   notInstalled: number;
@@ -51,11 +51,11 @@ export interface NetworkSummary {
   networkFill: number | null;
 
   categoryCounts: Record<StationCategory, number>;
-  /** The larger failure side among flagged truck-lane stations. */
+  /** The larger failure side among flagged vehicle-lane stations. */
   dominant: { signal: Signal; count: number; share: number } | null;
-  /** The single worst truck-actionable station — where the first truck goes. */
-  worstTruck: { name: string; stationId: string; score: number } | null;
-  /** Borough holding the most of the ten worst flagged truck-lane stations. */
+  /** The single worst vehicle-actionable station — where the first vehicle goes. */
+  worstVehicle: { name: string; stationId: string; score: number } | null;
+  /** Borough holding the most of the ten worst flagged vehicle-lane stations. */
   worstTen: { borough: Borough; count: number } | null;
 }
 
@@ -109,8 +109,8 @@ export function summarize(scored: ScoredStation[], lanes: Triaged): NetworkSumma
     }
   }
 
-  // The workload numbers come from the truck lane only.
-  const flagged = lanes.truck.filter((s) => s.breakdown.needsTruck);
+  // The workload numbers come from the vehicle lane only.
+  const flagged = lanes.vehicle.filter((s) => s.breakdown.needsVehicle);
   let emptySide = 0;
   let fullSide = 0;
   for (const s of flagged) {
@@ -125,8 +125,8 @@ export function summarize(scored: ScoredStation[], lanes: Triaged): NetworkSumma
         : { signal: 'empty' as Signal, count: emptySide, share: emptySide / flagged.length }
       : null;
 
-  const worst = lanes.truck[0];
-  const worstTruck = worst
+  const worst = lanes.vehicle[0];
+  const worstVehicle = worst
     ? {
         name: worst.station.name,
         stationId: worst.station.stationId,
@@ -134,7 +134,7 @@ export function summarize(scored: ScoredStation[], lanes: Triaged): NetworkSumma
       }
     : null;
 
-  // Which borough owns the worst ten a truck can actually fix. This is the
+  // Which borough owns the worst ten a vehicle can actually fix. This is the
   // clause a dispatcher routes on.
   const boroughTally = new Map<Borough, number>();
   for (const s of flagged.slice(0, 10)) {
@@ -148,8 +148,8 @@ export function summarize(scored: ScoredStation[], lanes: Triaged): NetworkSumma
   return {
     total: scored.length,
     ranked,
-    needsTruck: flagged.length,
-    truckLane: lanes.truck.length,
+    needsVehicle: flagged.length,
+    vehicleLane: lanes.vehicle.length,
     emptySide,
     fullSide,
     mechanic: lanes.mechanic.length,
@@ -160,7 +160,7 @@ export function summarize(scored: ScoredStation[], lanes: Triaged): NetworkSumma
     networkFill: usableSlots > 0 ? bikesAvailable / usableSlots : null,
     categoryCounts,
     dominant,
-    worstTruck,
+    worstVehicle,
     worstTen,
   };
 }
@@ -171,7 +171,7 @@ export function summarizeAll(scored: ScoredStation[]): NetworkSummary {
 }
 
 // The one-line situation readout moved to `src/model/situation.ts`, which ranks
-// the network's state by severity rather than always leading with the truck
+// the network's state by severity rather than always leading with the vehicle
 // workload. This module keeps the counts it draws from.
 
 // ---------------------------------------------------------------------------
@@ -182,18 +182,18 @@ export interface BreakdownRow {
   category: StationCategory;
   label: string;
   count: number;
-  /** Share of the truck lane, 0-1 — the denominator the bar is drawn against. */
+  /** Share of the vehicle lane, 0-1 — the denominator the bar is drawn against. */
   share: number;
 }
 
 /**
- * The rail's primary block: how the truck-actionable work breaks down.
- * Denominated against the truck lane, not the whole network, so the bars
+ * The rail's primary block: how the vehicle-actionable work breaks down.
+ * Denominated against the vehicle lane, not the whole network, so the bars
  * compare like with like.
  */
-export function truckBreakdown(s: NetworkSummary): BreakdownRow[] {
-  const denom = s.truckLane || 1;
-  return TRUCK_CATEGORIES.map((category) => ({
+export function vehicleBreakdown(s: NetworkSummary): BreakdownRow[] {
+  const denom = s.vehicleLane || 1;
+  return VEHICLE_CATEGORIES.map((category) => ({
     category,
     label: CATEGORY_LABEL[category],
     count: s.categoryCounts[category],

@@ -1,4 +1,4 @@
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from './score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from './score';
 
 /**
  * A unit of field work, with a clock on it.
@@ -186,7 +186,7 @@ export const URGENCY_LABEL: Record<Urgency, string> = {
 export function urgencyOf(order: WorkOrder): Urgency {
   if (order.priority === null) return 'routine';
   if (order.priority >= CRITICAL_THRESHOLD) return 'critical';
-  return order.priority >= NEEDS_TRUCK_THRESHOLD ? 'high' : 'routine';
+  return order.priority >= NEEDS_VEHICLE_THRESHOLD ? 'high' : 'routine';
 }
 
 /* ---------------------------------------------------------------------------

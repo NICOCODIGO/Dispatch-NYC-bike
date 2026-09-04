@@ -1,14 +1,14 @@
-import type { Truck } from '../mock/data';
+import type { Vehicle } from '../mock/data';
 import type { ScoredStation } from '../model/summary';
-import { truckAction, type TruckAction } from './insights';
+import { vehicleAction, type VehicleAction } from './insights';
 
 /**
  * The fleet organised around the decision, not around the vehicles.
  *
- * The page had eight truck rows in fixture-declaration order, which answers
- * "what is each truck doing" — a question nobody opens this screen to ask. The
+ * The page had eight vehicle rows in fixture-declaration order, which answers
+ * "what is each vehicle doing" — a question nobody opens this screen to ask. The
  * question is "who can I send, and where". That is availability, and it cuts
- * across state: a truck unloading with four minutes left is nearer to useful
+ * across state: a vehicle unloading with four minutes left is nearer to useful
  * than one that just departed on a thirty-five minute run, though the first
  * looks busier.
  *
@@ -19,8 +19,8 @@ import { truckAction, type TruckAction } from './insights';
 /** Minutes within which "busy" is close enough to plan around. */
 export const FREE_SHORTLY_MINUTES = 20;
 
-/** Average city speed for a box truck, km/h. Traffic, lights, double-parking. */
-export const TRUCK_SPEED_KMH = 18;
+/** Average city speed for a box vehicle, km/h. Traffic, lights, double-parking. */
+export const VEHICLE_SPEED_KMH = 18;
 
 /** Minutes on site loading or unloading, regardless of quantity. */
 export const SERVICE_MINUTES = 10;
@@ -34,7 +34,7 @@ export const AVAILABILITY_LABEL: Record<Availability, string> = {
 };
 
 export const AVAILABILITY_NOTE: Record<Availability, string> = {
-  'free-now': 'Parked and unassigned. These are the only trucks you can send this minute.',
+  'free-now': 'Parked and unassigned. These are the only vehicles you can send this minute.',
   'free-shortly': `Finishing something, free inside ${FREE_SHORTLY_MINUTES} minutes. Worth holding a job for.`,
   committed: 'On a run. Nothing to decide about these right now.',
 };
@@ -65,16 +65,16 @@ export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: numbe
  * one", which is all this number is asked to decide.
  */
 export function travelMinutes(km: number): number {
-  return Math.max(1, Math.round(((km * 1.3) / TRUCK_SPEED_KMH) * 60));
+  return Math.max(1, Math.round(((km * 1.3) / VEHICLE_SPEED_KMH) * 60));
 }
 
 /* ---------------------------------------------------------------------------
-   Matching a free truck to an outstanding job.
+   Matching a free vehicle to an outstanding job.
 --------------------------------------------------------------------------- */
 
 export interface Job {
   station: ScoredStation;
-  action: TruckAction;
+  action: VehicleAction;
 }
 
 export interface Match {
@@ -82,21 +82,21 @@ export interface Match {
   /** Minutes of driving to reach it. */
   minutes: number;
   km: number;
-  /** Bikes this truck can actually handle of what the station needs. */
+  /** Bikes this vehicle can actually handle of what the station needs. */
   servable: number;
-  /** True when the truck can finish the job in one visit. */
+  /** True when the vehicle can finish the job in one visit. */
   complete: boolean;
   /** Why this pairing, in the dispatcher's words. */
   why: string;
 }
 
-/** Outstanding truck-lane work, worst first, excluding anything already taken. */
+/** Outstanding vehicle-lane work, worst first, excluding anything already taken. */
 export function openJobs(lane: ScoredStation[], takenStationIds: Set<string>): Job[] {
   const out: Job[] = [];
   for (const station of lane) {
-    if (!station.breakdown.needsTruck) continue;
+    if (!station.breakdown.needsVehicle) continue;
     if (takenStationIds.has(station.station.stationId)) continue;
-    const action = truckAction(station.breakdown);
+    const action = vehicleAction(station.breakdown);
     if (action.kind !== 'drop' && action.kind !== 'collect') continue;
     out.push({ station, action });
   }
@@ -104,10 +104,10 @@ export function openJobs(lane: ScoredStation[], takenStationIds: Set<string>): J
 }
 
 /**
- * The best job for one truck.
+ * The best job for one vehicle.
  *
  * Direction first, because it is a hard constraint rather than a preference: an
- * empty truck cannot drop bikes it does not have, and a full one cannot collect
+ * empty vehicle cannot drop bikes it does not have, and a full one cannot collect
  * into space it does not have. A board that offered either would be sending
  * somebody on a wasted trip with a confident-looking label on it.
  *
@@ -117,8 +117,8 @@ export function openJobs(lane: ScoredStation[], takenStationIds: Set<string>): J
  * the first thing to re-fit once there are enough completed runs to measure
  * whether the nearer job or the worse job actually pays off more.
  */
-export function bestMatch(truck: Truck, jobs: Job[], limit = 40): Match | null {
-  const space = truck.capacity - truck.load;
+export function bestMatch(vehicle: Vehicle, jobs: Job[], limit = 40): Match | null {
+  const space = vehicle.capacity - vehicle.load;
   let best: Match | null = null;
   let bestScore = -Infinity;
 
@@ -126,10 +126,10 @@ export function bestMatch(truck: Truck, jobs: Job[], limit = 40): Match | null {
     const { action, station } = job;
 
     // Hard constraint: can this vehicle move bikes in this direction at all?
-    const capable = action.kind === 'drop' ? truck.load : space;
+    const capable = action.kind === 'drop' ? vehicle.load : space;
     if (capable <= 0) continue;
 
-    const km = distanceKm(truck.lat, truck.lon, station.station.lat, station.station.lon);
+    const km = distanceKm(vehicle.lat, vehicle.lon, station.station.lat, station.station.lon);
     const minutes = travelMinutes(km);
     const servable = Math.min(capable, action.bikes);
     const complete = servable >= action.bikes;
@@ -145,7 +145,7 @@ export function bestMatch(truck: Truck, jobs: Job[], limit = 40): Match | null {
       servable,
       complete,
       /*
-       * Truck-side only.
+       * Vehicle-side only.
        *
        * The first version restated the station and the drive time, both of
        * which the row already prints an inch to the left — it read "collect 24
@@ -155,7 +155,7 @@ export function bestMatch(truck: Truck, jobs: Job[], limit = 40): Match | null {
        */
       why:
         action.kind === 'drop'
-          ? `carrying ${truck.load}` + (complete ? '' : `, ${action.bikes - servable} short of the full job`)
+          ? `carrying ${vehicle.load}` + (complete ? '' : `, ${action.bikes - servable} short of the full job`)
           : `${space} slots free` + (complete ? '' : `, fills up ${action.bikes - servable} short`),
     };
   }
@@ -168,10 +168,10 @@ export function bestMatch(truck: Truck, jobs: Job[], limit = 40): Match | null {
 --------------------------------------------------------------------------- */
 
 export interface FleetRow {
-  truck: Truck;
+  vehicle: Vehicle;
   freeInMin: number;
   availability: Availability;
-  /** Only computed for trucks that can take work now. */
+  /** Only computed for vehicles that can take work now. */
   match: Match | null;
 }
 
@@ -182,37 +182,37 @@ export interface FleetGroups {
 }
 
 /**
- * Sorts the fleet into the three buckets, matching a job to each truck that can
+ * Sorts the fleet into the three buckets, matching a job to each vehicle that can
  * take one.
  *
  * Matching is greedy and sequential rather than globally optimal: the soonest-
- * free truck picks first, and its choice is removed from the pool so two cards
+ * free vehicle picks first, and its choice is removed from the pool so two cards
  * never propose the same station. A proper assignment problem would do better,
  * but a dispatcher overrides half of these anyway, and a suggestion they cannot
  * follow the reasoning of is worse than a slightly worse suggestion they can.
  */
 export function groupFleet(
-  trucks: Truck[],
-  freeIn: (t: Truck) => number,
+  vehicles: Vehicle[],
+  freeIn: (t: Vehicle) => number,
   jobs: Job[],
 ): FleetGroups {
-  const rows = trucks
-    .map((truck) => ({ truck, freeInMin: freeIn(truck) }))
-    .sort((a, b) => a.freeInMin - b.freeInMin || a.truck.id.localeCompare(b.truck.id));
+  const rows = vehicles
+    .map((vehicle) => ({ vehicle, freeInMin: freeIn(vehicle) }))
+    .sort((a, b) => a.freeInMin - b.freeInMin || a.vehicle.id.localeCompare(b.vehicle.id));
 
   const pool = [...jobs];
   const groups: FleetGroups = { 'free-now': [], 'free-shortly': [], committed: [] };
 
-  for (const { truck, freeInMin } of rows) {
+  for (const { vehicle, freeInMin } of rows) {
     const availability = availabilityOf(freeInMin);
-    const match = availability === 'committed' ? null : bestMatch(truck, pool);
+    const match = availability === 'committed' ? null : bestMatch(vehicle, pool);
 
     if (match) {
       const i = pool.indexOf(match.job);
       if (i >= 0) pool.splice(i, 1);
     }
 
-    groups[availability].push({ truck, freeInMin, availability, match });
+    groups[availability].push({ vehicle, freeInMin, availability, match });
   }
 
   return groups;

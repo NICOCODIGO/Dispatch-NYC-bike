@@ -114,7 +114,7 @@
   /* Amber is the hard one: no amber light enough to read as amber clears 4.5:1
      on white, so this is deliberately pushed to the dark end of the hue. It is
      browner than the comp's #c98626 (3.03:1) and that is the price of the
-     "needs a truck" line being legible. Still unmistakably warm against
+     "needs a vehicle" line being legible. Still unmistakably warm against
      `empty`'s red, which is the distinction that has to survive. */
   --color-warn: #a16b1e; /* 4.52:1 on white */
   --color-warn-bg: #fbf2e3;
@@ -299,10 +299,9 @@
   animation: fade-in 160ms ease-out;
 }
 
-/* The chrome rail widens and its groups unfold on one shared curve, so the
-   peek reads as a single motion rather than several. Width and grid-template-rows
-   are the only properties that move; the icons hold still and the labels are
-   revealed by the clip edge sweeping past them. */
+/* The curve the chrome rail's sections unfold on, shared with the disclosure
+   rows in `primitives`. grid-template-rows is the only property that moves, so
+   the rows above and below the group hold still while it opens. */
 .rail-ease {
   transition-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
   transition-duration: 200ms;

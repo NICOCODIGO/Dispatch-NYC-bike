@@ -3,7 +3,7 @@
  *
  * The score answers "how bad is it". It does not answer "who do I send", and
  * conflating the two put broken docks at the top of a rebalancing queue — a
- * truck full of bikes cannot fix a dead station, so the board's single most
+ * vehicle full of bikes cannot fix a dead station, so the board's single most
  * prominent answer was useless.
  *
  * Routing happens *after* scoring and never modifies it. `score.ts` is
@@ -15,17 +15,17 @@ import type { ScoreBreakdown, StationCategory } from './score';
 import type { ScoredStation } from './summary';
 
 export type Lane =
-  /** Empty, Full, Starving, Flooded — a truck fixes these by moving bikes. */
-  | 'truck'
-  /** Outage, Unusable — mechanical failure; a truck is the wrong vehicle. */
+  /** Empty, Full, Starving, Flooded — a vehicle fixes these by moving bikes. */
+  | 'vehicle'
+  /** Outage, Unusable — mechanical failure; a vehicle is the wrong vehicle. */
   | 'mechanic'
   /** Counts too old to act on. Scored, but the score is not evidence. */
   | 'unverified'
   /** Healthy or not installed — nothing to dispatch. */
   | 'quiet';
 
-/** The categories a truck can actually resolve, worst-first. */
-export const TRUCK_CATEGORIES: readonly StationCategory[] = [
+/** The categories a vehicle can actually resolve, worst-first. */
+export const VEHICLE_CATEGORIES: readonly StationCategory[] = [
   'empty',
   'full',
   'starving',
@@ -49,12 +49,12 @@ export function laneOf(b: ScoreBreakdown): Lane {
   if (b.staleness.notReporting) return 'unverified';
   if (b.signal === 'outage') return 'mechanic';
   if (b.category === 'healthy') return 'quiet';
-  return 'truck';
+  return 'vehicle';
 }
 
 export interface Triaged {
-  /** Truck-actionable, worst-first. This is the ranked queue. */
-  truck: ScoredStation[];
+  /** Vehicle-actionable, worst-first. This is the ranked queue. */
+  vehicle: ScoredStation[];
   mechanic: ScoredStation[];
   unverified: ScoredStation[];
   quiet: ScoredStation[];
@@ -62,7 +62,7 @@ export interface Triaged {
 
 /** Splits an already-sorted list into lanes, preserving order within each. */
 export function triage(scored: ScoredStation[]): Triaged {
-  const out: Triaged = { truck: [], mechanic: [], unverified: [], quiet: [] };
+  const out: Triaged = { vehicle: [], mechanic: [], unverified: [], quiet: [] };
   for (const s of scored) out[laneOf(s.breakdown)].push(s);
   return out;
 }

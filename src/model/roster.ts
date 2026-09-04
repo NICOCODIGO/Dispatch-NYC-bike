@@ -168,11 +168,11 @@ export function shiftCapacity(
     /** Bikes that could usefully be moved — `rebalanceDemand().relocatable`. */
     relocatable: number;
     /** Bikes the active fleet can carry in one round of runs. */
-    truckCapacity: number;
+    vehicleCapacity: number;
     date: Date;
   },
 ): ShiftCapacity {
-  const { relocatable, truckCapacity, date } = opts;
+  const { relocatable, vehicleCapacity, date } = opts;
   const shift = shiftAt(date);
 
   const onShift = roster.filter((p) => isOnShift(p, date));
@@ -188,9 +188,9 @@ export function shiftCapacity(
 
   const drivers = byRole['rebalance-driver'].on;
 
-  // Null rather than zero when there is no fleet: "no trucks" and "no work" are
+  // Null rather than zero when there is no fleet: "no vehicles" and "no work" are
   // opposite situations and both would divide to the same number.
-  const runsNeeded = truckCapacity > 0 ? Math.ceil(relocatable / truckCapacity) : null;
+  const runsNeeded = vehicleCapacity > 0 ? Math.ceil(relocatable / vehicleCapacity) : null;
   const runsAvailable = drivers * RUNS_PER_DRIVER_PER_SHIFT;
 
   // An order nobody on shift is qualified for. Distinct from merely unassigned:
@@ -220,7 +220,7 @@ export interface Candidate {
   status: StaffStatus;
   /** Depot to station, in km. Null when the depot has no known position. */
   km: number | null;
-  /** Driving minutes from their depot, on the same model the trucks use. */
+  /** Driving minutes from their depot, on the same model the vehicles use. */
   minutes: number | null;
   /** How many open orders they are already carrying. */
   load: number;
@@ -299,7 +299,7 @@ export function candidatesFor(
  * hardest step of the reasoning themselves.
  */
 export function verdict(cap: ShiftCapacity): string {
-  if (cap.runsNeeded === null) return 'No active truck capacity — nothing can be rebalanced.';
+  if (cap.runsNeeded === null) return 'No active vehicle capacity — nothing can be rebalanced.';
   if (cap.drivers === 0) return 'No rebalance drivers on shift. The queue will not move tonight.';
   if (cap.shortfall === null) return '';
 

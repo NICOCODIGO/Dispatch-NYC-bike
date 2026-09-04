@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Icon, type IconName } from '../ui/Icon';
 import { ZONES } from '../mock/data';
 import { liveZones } from '../data/insights';
 import { useConsole } from '../state/useConsole';
-import { useSidebar, type PinnedLayout } from '../state/useSidebar';
 import { POLL_INTERVAL_MS, useDispatch } from '../store/useDispatch';
 import { formatAgo, formatClock, useTicker } from '../lib/time';
 import { cn } from '../lib/cn';
@@ -12,29 +11,22 @@ import { cn } from '../lib/cn';
 /**
  * The chrome rail.
  *
- * Near-black warm brown, full height. It is the only dark surface in the app:
- * everything the console *reports* lives on cream paper, and everything it is —
- * identity, navigation, session — lives here. That split is what keeps a nav
- * item from ever being mistaken for data.
+ * Near-black warm brown, full height, fixed width, always open. It is the only
+ * dark surface in the app: everything the console *reports* lives on cream
+ * paper, and everything it is — identity, navigation, session — lives here.
+ * That split is what keeps a nav item from ever being mistaken for data.
  *
- * It rests as a ~56px strip of icons and peeks open to the full panel on hover
- * or keyboard focus, floating over the board rather than pushing it. A pin
- * (⌘/Ctrl+B) locks it open; while pinned the operator chooses whether it pushes
- * the content narrower or keeps floating over it.
- *
- * ## Why nothing jumps on peek
- *
- * Every row is laid out once at the full 200px width, inside a fixed-width plane
- * the `<aside>` clips with `overflow: hidden`. Widening the aside is the whole
- * animation — the icons never move or resize because each sits in a fixed slot,
- * and the labels simply fade in beside them. Nothing is re-rendered into a
- * different shape.
+ * It sits in the flex flow beside the work area rather than floating over it.
+ * The rail is permanent furniture, so the board is laid out in the width that
+ * is left and no part of a screen is ever underneath the navigation. A rail
+ * that collapses to a strip and peeks open on hover was tried and reverted: it
+ * bought back 144px that a dense table did not need, at the cost of covering
+ * the leftmost column of whatever the operator was reading and of hiding the
+ * route tree behind a gesture.
  *
  * Sections are a plain accordion: clicking a header toggles its sub-tabs, and
  * more than one can be open at a time. The section that owns the current route
  * opens itself on arrival, but the operator can close it and it stays closed.
- * While the rail is collapsed the children fold away regardless; they come back
- * as they were left when it opens again.
  */
 
 interface NavItem {
@@ -67,107 +59,39 @@ const DISPATCH: NavSection = {
 const FLEET: NavSection = {
   key: 'fleet',
   label: 'Fleet',
-  icon: 'truck',
+  icon: 'vehicle',
   children: [
-    { to: '/fleet/trucks', label: 'Trucks', icon: 'truck' },
+    { to: '/fleet/vehicles', label: 'Vehicles', icon: 'vehicle' },
     // Under Fleet rather than Monitoring: the roster is not something you watch,
-    // it is the constraint on every dispatch the truck screens make.
+    // it is the constraint on every dispatch the vehicle screens make.
     { to: '/fleet/shift', label: 'Shift', icon: 'users' },
   ],
 };
 
-/** How long the pointer has to rest on the rail before it peeks open. */
-const PEEK_DELAY_MS = 180;
-
 /**
- * Every glyph — the logo, the live dot, each nav icon, the avatar — sits in a
- * 26px box that starts 15px from the rail's left edge, so all of them share one
- * vertical centre line down the 56px collapsed strip.
+ * Every glyph — the logo, the live dot, each top-level nav icon, the avatar —
+ * sits in a 26px box that starts 15px from the rail's left edge, so all of them
+ * share one vertical centre line down the rail.
  */
 const ICON_SLOT = 'relative flex w-[26px] shrink-0 items-center justify-center';
-/** Left inset of a nav row, chosen so its ICON_SLOT lands on that centre line
- *  (the row already sits 8px in from the `px-2` list). */
+/** Left inset of a top-level row, chosen so its ICON_SLOT lands on that centre
+ *  line (the row already sits 8px in from the `px-2` list). */
 const ROW_PAD = 'pl-[7px]';
 
-/** Fades a label in only once the rail is open — collapsed shows bare icons. */
-function reveal(expanded: boolean): string {
-  return cn(
-    'transition-opacity duration-150',
-    expanded ? 'opacity-100' : 'pointer-events-none opacity-0',
-  );
-}
-
-/**
- * The highlight behind a top-level row. A ~40px lozenge centred in the collapsed
- * strip that grows to a full-width bar as the rail opens — so the selection is
- * never a rectangle sliced off at the rail's edge.
- */
-function RowBg({ expanded, active }: { expanded: boolean; active: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        'rail-ease pointer-events-none absolute inset-y-[2px] left-0 rounded-lg transition-[right]',
-        expanded ? 'right-0' : 'right-[calc(100%-40px)]',
-        active ? 'bg-[var(--color-rail-hi)]' : 'group-hover/row:bg-[#332c25]',
-      )}
-    />
-  );
-}
+/** Shared row shape. Nested sub-tabs indent instead of taking the icon slot. */
+const ROW_BASE =
+  'group/row relative flex items-center gap-2 rounded-lg py-[6px] pr-2 text-[11.5px] whitespace-nowrap transition-colors';
 
 function isChildActive(item: NavItem, pathname: string): boolean {
   if (item.end) return pathname === item.to;
   return pathname === item.to || pathname.startsWith(`${item.to}/`);
 }
 
-export function Sidebar({ forceExpanded = false }: { forceExpanded?: boolean }) {
+export function Sidebar() {
   const ticketCount = useConsole((s) => s.workOrders.length);
   const unverified = useDispatch((s) => s.lanes.unverified.length);
   const faults = useDispatch((s) => s.lanes.mechanic.length);
   const scored = useDispatch((s) => s.scored);
-
-  const pinned = useSidebar((s) => s.pinned);
-  const layout = useSidebar((s) => s.layout);
-  const togglePinned = useSidebar((s) => s.togglePinned);
-  const setLayout = useSidebar((s) => s.setLayout);
-
-  // Hover intent: the pointer has to linger, so brushing past the edge on the
-  // way somewhere else does not fire the panel open.
-  const [peek, setPeek] = useState(false);
-  const peekTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const expanded = pinned || forceExpanded || peek;
-  // The panel only casts a shadow when it is actually floating over the board.
-  const inline = forceExpanded || (pinned && layout === 'push');
-  const floating = expanded && !inline;
-
-  const openPeek = () => {
-    clearTimeout(peekTimer.current);
-    peekTimer.current = setTimeout(() => setPeek(true), PEEK_DELAY_MS);
-  };
-  const closeRail = () => {
-    clearTimeout(peekTimer.current);
-    setPeek(false);
-  };
-  useEffect(() => () => clearTimeout(peekTimer.current), []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        togglePinned();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [togglePinned]);
-
-  // Unpinning while the pointer is still over the rail should leave it open
-  // until the pointer actually leaves, not snap shut under the cursor.
-  const handleTogglePin = () => {
-    if (pinned) setPeek(true);
-    togglePinned();
-  };
 
   // Fixture list only until the first poll lands, so the rail is never empty.
   const zones = scored.length > 0 ? liveZones(scored) : ZONES;
@@ -243,171 +167,181 @@ export function Sidebar({ forceExpanded = false }: { forceExpanded?: boolean }) 
     });
 
   return (
-    <aside
-      onMouseEnter={openPeek}
-      onMouseLeave={closeRail}
-      onFocus={() => setPeek(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPeek(false);
-      }}
-      className={cn(
-        'rail-ease absolute inset-y-0 left-0 z-30 overflow-hidden bg-[var(--color-rail)] text-[var(--color-rail-ink-2)] transition-[width,box-shadow]',
-        expanded ? 'w-[200px]' : 'w-14',
-        floating && 'shadow-[2px_0_28px_rgb(43_38_33/22%)]',
-      )}
-    >
-      {/* The fixed plane. It is always 200px wide and laid out once; the aside
-          above is the moving viewport onto it. */}
-      <div className="flex h-full w-[200px] shrink-0 flex-col">
-        <Brand expanded={expanded} pinned={pinned} onTogglePin={handleTogglePin} />
-        <LiveStrip expanded={expanded} />
+    <aside className="flex h-full w-[200px] shrink-0 flex-col bg-[var(--color-rail)] text-[var(--color-rail-ink-2)]">
+      <Brand />
+      <LiveStrip />
 
-        <nav
-          aria-label="Sections"
-          className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto py-3"
-        >
-          <ul className="flex flex-col gap-0.5 px-2">
-            {sections.map((section) => (
-              <Section
-                key={section.key}
-                section={section}
-                expanded={expanded}
-                open={openKeys.has(section.key)}
-                active={section.key === activeKey}
-                onToggle={() => toggleSection(section.key)}
-              />
-            ))}
+      <nav
+        aria-label="Sections"
+        className="thin-scroll flex-1 overflow-x-hidden overflow-y-auto py-3"
+      >
+        <ul className="flex flex-col gap-0.5 px-2">
+          {sections.map((section) => (
+            <Section
+              key={section.key}
+              section={section}
+              open={openKeys.has(section.key)}
+              active={section.key === activeKey}
+              onToggle={() => toggleSection(section.key)}
+            />
+          ))}
 
-            <NavRow to="/analytics" label="Analytics" icon="line-chart" expanded={expanded} />
-          </ul>
-        </nav>
+          <NavRow to="/analytics" label="Analytics" icon="line-chart" />
+        </ul>
+      </nav>
 
-        <UserFooter
-          expanded={expanded}
-          pinned={pinned}
-          layout={layout}
-          onSetLayout={setLayout}
-        />
-      </div>
+      <UserFooter />
     </aside>
   );
 }
 
-function Brand({
-  expanded,
-  pinned,
-  onTogglePin,
-}: {
-  expanded: boolean;
-  pinned: boolean;
-  onTogglePin: () => void;
-}) {
+/**
+ * The wordmark.
+ *
+ * One line, set large enough to hold the rail's width on its own. It carried a
+ * second line naming the operator until that was dropped, which left a 12px
+ * word floating beside a 26px logo in a block still sized for two — the mark
+ * read as a caption for the icon rather than as the name of the product. At
+ * 16px it balances the logo and the space beside it is margin, not a gap.
+ */
+function Brand() {
   return (
-    <div className="flex items-center gap-2 border-b border-[var(--color-rail-line)] py-2.5 pr-2 pl-[15px] whitespace-nowrap">
+    <div className="flex items-center gap-2.5 border-b border-[var(--color-rail-line)] py-3 pr-2 pl-[15px] whitespace-nowrap">
       <span
         aria-hidden="true"
         className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-md bg-[var(--color-rail-hi)] text-white"
       >
         <Icon name="bike" size={15} />
       </span>
-      <span className={cn('min-w-0 flex-1', reveal(expanded))}>
-        <span className="block text-[12px] leading-tight font-semibold text-white">Dispatch</span>
-        <span className="block text-[10px] leading-tight text-[var(--color-rail-ink-3)]">
-          NYC Bike Ops
-        </span>
+      <span className="min-w-0 flex-1 truncate text-[16px] leading-none font-semibold tracking-[-0.015em] text-white">
+        Dispatch
       </span>
-      <button
-        type="button"
-        onClick={onTogglePin}
-        aria-pressed={pinned}
-        aria-label={pinned ? 'Unpin sidebar' : 'Pin sidebar open'}
-        title={`${pinned ? 'Unpin' : 'Pin'} sidebar  (⌘B)`}
-        className={cn(
-          'shrink-0 rounded p-1 transition-colors hover:bg-[#332c25] hover:text-white',
-          pinned ? 'text-white' : 'text-[var(--color-rail-ink-3)]',
-          reveal(expanded),
-        )}
-      >
-        <Icon name="panel-left" size={14} />
-      </button>
     </div>
   );
 }
 
 /**
+ * The rail's alarm red, lightened for text.
+ *
+ * The dot can sit at the palette's `--color-empty` because a 6px disc only has
+ * to be *seen*; the same value as 10px type on the near-black rail lands around
+ * 3:1 and has to be read. Lightened to clear 4.5:1 without becoming a different
+ * colour from the dot it sits beside.
+ */
+const RAIL_ALARM_DOT = '#c0453a';
+const RAIL_ALARM_TEXT = '#e08b82';
+const RAIL_LIVE_DOT = '#4ea373';
+
+/**
  * The heartbeat.
  *
- * One place in the app states how fresh everything is. Collapsed, only the
- * status dot shows — it sits in the same icon slot as the nav glyphs, so it
- * holds still while the "Updated 2m ago" text fades in beside it.
+ * One place in the app states how fresh everything is, and it is here rather
+ * than on a card — the age of the feed qualifies every number on every screen,
+ * so attaching it to one statistic implied it was about that statistic.
  *
  * Its own component so the one-second tick repaints twelve pixels of chrome
  * instead of a table of two thousand rows.
  */
-function LiveStrip({ expanded }: { expanded: boolean }) {
+function LiveStrip() {
   const fetchedAtMs = useDispatch((s) => s.fetchedAtMs);
   const error = useDispatch((s) => s.error);
   const now = useTicker(1000);
 
   const stale = fetchedAtMs !== null && now - fetchedAtMs > POLL_INTERVAL_MS * 2;
-  const dot = error || stale ? '#c0453a' : '#4ea373';
+  const connecting = !error && fetchedAtMs === null;
+  const down = Boolean(error) || stale;
+
+  /*
+   * The state gets a word, not just a colour.
+   *
+   * This strip previously said "Updated 53s ago" whether the feed was healthy
+   * or had been failing for ten minutes — the only difference was five pixels
+   * of green turning red, which is invisible to anyone who does not happen to
+   * be looking at it and to anyone who cannot tell the two apart. The word is
+   * the signal now and the colour reinforces it.
+   *
+   * Ordered by hierarchy rather than by reading order: the state is what you
+   * check, the age is why, and the wall-clock time is a receipt you only want
+   * when something looks wrong. Three lines of the same 10px grey made you read
+   * all three to find out which one mattered.
+   */
+  const state = error
+    ? 'Feed offline'
+    : stale
+      ? 'Feed delayed'
+      : connecting
+        ? 'Connecting'
+        : 'Live';
+
+  const detail = error
+    ? 'retrying — last good data shown'
+    : fetchedAtMs === null
+      ? 'waiting for the first poll'
+      : `updated ${formatAgo(now - fetchedAtMs)} ago`;
 
   return (
     <div
-      className="flex items-center gap-2 border-b border-[var(--color-rail-line)] py-2 pr-3 pl-[15px] whitespace-nowrap"
+      className="border-b border-[var(--color-rail-line)] py-2.5 pr-3 pl-[15px]"
       title={
         error
           ? `Feed unreachable: ${error.message}. Showing the last good data and retrying.`
           : 'The board polls every 60 seconds while this tab is visible.'
       }
     >
-      <span className={ICON_SLOT}>
+      <div className="flex items-center gap-2 whitespace-nowrap">
+        <span className={ICON_SLOT}>
+          <span
+            aria-hidden="true"
+            className={cn('h-[6px] w-[6px] rounded-full', !down && !connecting && 'pulse-dot')}
+            style={{
+              backgroundColor: down
+                ? RAIL_ALARM_DOT
+                : connecting
+                  ? 'var(--color-rail-ink-3)'
+                  : RAIL_LIVE_DOT,
+            }}
+          />
+        </span>
         <span
-          aria-hidden="true"
-          className={cn('h-[5px] w-[5px] rounded-full', !error && !stale && 'pulse-dot')}
-          style={{ backgroundColor: dot }}
-        />
-      </span>
-      <span
-        className={cn(
-          'min-w-0 flex-1 truncate text-[10px] text-[var(--color-rail-ink-2)]',
-          reveal(expanded),
-        )}
-      >
-        {error
-          ? 'Retrying'
-          : fetchedAtMs === null
-            ? 'Connecting…'
-            : `Updated ${formatAgo(now - fetchedAtMs)} ago`}
-      </span>
-      <span
-        className={cn('num shrink-0 text-[10px] text-[var(--color-rail-ink-3)]', reveal(expanded))}
-      >
-        {fetchedAtMs === null ? '--:--' : formatClock(fetchedAtMs).slice(0, 5)}
-      </span>
+          className="min-w-0 flex-1 truncate text-[11px] leading-none font-medium"
+          style={{ color: down ? RAIL_ALARM_TEXT : 'var(--color-rail-ink)' }}
+        >
+          {state}
+        </span>
+        <span className="num shrink-0 text-[10px] leading-none text-[var(--color-rail-ink-3)]">
+          {fetchedAtMs === null ? '--:--' : formatClock(fetchedAtMs).slice(0, 5)}
+        </span>
+      </div>
+
+      {/* Aligned under the state word, not the dot: 26px icon slot + the 8px
+          gap. The indent is what makes it read as a sub-line rather than a
+          second, competing row. */}
+      <p className="mt-1.5 truncate pl-[34px] text-[10px] leading-none text-[var(--color-rail-ink-3)]">
+        {detail}
+      </p>
     </div>
   );
 }
 
 /**
- * One section. Its header holds still at every width; clicking it toggles the
- * sub-tabs, which unfold on the same curve as the rail.
+ * One section: a header that toggles its sub-tabs.
+ *
+ * The header carries no solid highlight of its own even when it owns the route
+ * — the active *child* row is already marked, and a second bar above it reads
+ * as two selections.
  */
 function Section({
   section,
-  expanded,
   open,
   active,
   onToggle,
 }: {
   section: NavSection;
-  expanded: boolean;
   open: boolean;
   active: boolean;
   onToggle: () => void;
 }) {
   const badgeTotal = section.children.reduce((sum, c) => sum + (c.badge ?? 0), 0);
-  const childrenVisible = expanded && open;
 
   return (
     <li>
@@ -416,39 +350,21 @@ function Section({
         onClick={onToggle}
         aria-expanded={open}
         className={cn(
-          'group/row relative flex w-full items-center gap-2 py-[7px] pr-2 text-[11.5px] whitespace-nowrap transition-colors',
+          ROW_BASE,
           ROW_PAD,
+          'w-full py-[7px] hover:bg-[#332c25]',
           active ? 'font-medium text-white' : 'text-[var(--color-rail-ink-2)] hover:text-white',
         )}
       >
-        {/* Solid only as the collapsed accent — expanded, the active *child* row
-            carries the highlight and a second bar on the header is just noise. */}
-        <RowBg expanded={expanded} active={active && !expanded} />
-
         <span className={ICON_SLOT}>
           <Icon name={section.icon} size={15} />
         </span>
-        <span className={cn('relative flex-1 truncate text-left', reveal(expanded))}>
-          {section.label}
-        </span>
+        <span className="flex-1 truncate text-left">{section.label}</span>
 
-        {/* Rides the icon so it survives while the rail is a bare strip. */}
-        {badgeTotal > 0 && (
-          <span
-            aria-hidden="true"
-            className={cn(
-              'absolute top-1 left-[26px] h-[6px] w-[6px] rounded-full border border-[var(--color-rail)] bg-[#c0453a] transition-opacity duration-150',
-              expanded ? 'opacity-0' : 'opacity-100',
-            )}
-          />
-        )}
+        {/* Folded away, the header speaks for its children: it carries their
+            total so a closed section cannot hide a queue that is filling up. */}
         {badgeTotal > 0 && !open && (
-          <span
-            className={cn(
-              'num relative shrink-0 rounded bg-[#453d33] px-1.5 py-px text-[10px] font-semibold text-[#d8cfc0]',
-              reveal(expanded),
-            )}
-          >
+          <span className="num shrink-0 rounded bg-[#453d33] px-1.5 py-px text-[10px] font-semibold text-[#d8cfc0]">
             {badgeTotal}
           </span>
         )}
@@ -456,24 +372,25 @@ function Section({
           name="chevron-right"
           size={12}
           className={cn(
-            'relative shrink-0 text-[var(--color-rail-ink-3)] transition-[transform,opacity] duration-150',
+            'shrink-0 text-[var(--color-rail-ink-3)] transition-transform duration-150',
             open && 'rotate-90',
-            expanded ? 'opacity-100' : 'opacity-0',
           )}
         />
       </button>
 
-      {/* One tree at every width — the group just unfolds. `inert` keeps the
-          folded-away rows out of the tab order and the accessibility tree. */}
+      {/* Height is animated by the 0fr → 1fr grid row rather than a guessed
+          max-height, so the curve is the same whether a section holds two
+          sub-tabs or six. `inert` keeps the folded-away rows out of the tab
+          order and the accessibility tree. */}
       <div
         className="rail-ease grid transition-[grid-template-rows]"
-        style={{ gridTemplateRows: childrenVisible ? '1fr' : '0fr' }}
-        aria-hidden={!childrenVisible}
-        {...(!childrenVisible ? { inert: '' } : {})}
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+        aria-hidden={!open}
+        {...(!open ? { inert: '' } : {})}
       >
         <ul className="ml-[26px] flex min-h-0 flex-col gap-px overflow-hidden border-l border-[var(--color-rail-line)] pl-1.5">
           {section.children.map((item) => (
-            <NavRow key={item.to} {...item} nested expanded={expanded} />
+            <NavRow key={item.to} {...item} nested />
           ))}
         </ul>
       </div>
@@ -489,8 +406,7 @@ function NavRow({
   count,
   end,
   nested = false,
-  expanded,
-}: NavItem & { nested?: boolean; expanded: boolean }) {
+}: NavItem & { nested?: boolean }) {
   return (
     <li>
       <NavLink
@@ -498,118 +414,53 @@ function NavRow({
         end={end}
         className={({ isActive }) =>
           cn(
-            'group/row relative flex items-center gap-2 py-[6px] pr-2 text-[11.5px] whitespace-nowrap transition-colors',
-            nested ? 'rounded-lg pl-2' : ROW_PAD,
+            ROW_BASE,
+            nested ? 'pl-2' : ROW_PAD,
             isActive
-              ? 'font-medium text-white'
-              : 'text-[var(--color-rail-ink-2)] hover:text-white',
-            nested && (isActive ? 'bg-[var(--color-rail-hi)]' : 'hover:bg-[#332c25]'),
+              ? 'bg-[var(--color-rail-hi)] font-medium text-white'
+              : 'text-[var(--color-rail-ink-2)] hover:bg-[#332c25] hover:text-white',
           )
         }
       >
-        {({ isActive }) => (
-          <>
-            {!nested && <RowBg expanded={expanded} active={isActive} />}
-            <span className={ICON_SLOT}>
-              {icon ? (
-                <Icon name={icon} size={15} />
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className="h-[5px] w-[5px] rounded-full bg-current opacity-50"
-                />
-              )}
-            </span>
-            <span className={cn('relative flex-1 truncate', reveal(expanded))}>{label}</span>
-            {badge !== undefined && badge > 0 && (
-              <span
-                className={cn(
-                  'num relative shrink-0 rounded bg-[#453d33] px-1.5 py-px text-[10px] font-semibold text-[#d8cfc0]',
-                  reveal(expanded),
-                )}
-              >
-                {badge}
-              </span>
-            )}
-            {count !== undefined && (
-              <span
-                className={cn(
-                  'num relative shrink-0 text-[10px] text-[var(--color-rail-ink-3)]',
-                  reveal(expanded),
-                )}
-              >
-                {count}
-              </span>
-            )}
-          </>
+        <span className={ICON_SLOT}>
+          {icon ? (
+            <Icon name={icon} size={15} />
+          ) : (
+            <span aria-hidden="true" className="h-[5px] w-[5px] rounded-full bg-current opacity-50" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {badge !== undefined && badge > 0 && (
+          <span className="num shrink-0 rounded bg-[#453d33] px-1.5 py-px text-[10px] font-semibold text-[#d8cfc0]">
+            {badge}
+          </span>
+        )}
+        {count !== undefined && (
+          <span className="num shrink-0 text-[10px] text-[var(--color-rail-ink-3)]">{count}</span>
         )}
       </NavLink>
     </li>
   );
 }
 
-function UserFooter({
-  expanded,
-  pinned,
-  layout,
-  onSetLayout,
-}: {
-  expanded: boolean;
-  pinned: boolean;
-  layout: PinnedLayout;
-  onSetLayout: (l: PinnedLayout) => void;
-}) {
+function UserFooter() {
   return (
-    <div className="border-t border-[var(--color-rail-line)]">
-      {pinned && (
-        <div
-          className={cn(
-            'flex items-center justify-between gap-2 border-b border-[var(--color-rail-line)] py-2 pr-3 pl-[15px] whitespace-nowrap',
-            reveal(expanded),
-          )}
-        >
-          <span className="text-[10px] text-[var(--color-rail-ink-3)]">Layout</span>
-          <span className="inline-flex shrink-0 rounded border border-[var(--color-rail-line)] p-0.5">
-            {(['push', 'overlay'] as const).map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => onSetLayout(opt)}
-                aria-pressed={layout === opt}
-                className={cn(
-                  'rounded-[3px] px-1.5 py-0.5 text-[10px] font-medium transition-colors',
-                  layout === opt
-                    ? 'bg-[var(--color-rail-hi)] text-white'
-                    : 'text-[var(--color-rail-ink-3)] hover:text-[var(--color-rail-ink-2)]',
-                )}
-              >
-                {opt === 'overlay' ? 'Float' : 'Push'}
-              </button>
-            ))}
-          </span>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 py-2.5 pr-3 pl-[17px] whitespace-nowrap">
-        <span
-          aria-hidden="true"
-          className="h-[22px] w-[22px] shrink-0 rounded-full bg-gradient-to-br from-[#8a7c68] to-[#5c5145]"
-        />
-        <span className={cn('min-w-0 flex-1', reveal(expanded))}>
-          <span className="block text-[11px] leading-tight font-medium text-white">Ops Center</span>
-          <span className="block text-[10px] leading-tight text-[var(--color-rail-ink-3)]">Admin</span>
-        </span>
-        <button
-          type="button"
-          aria-label="Account menu"
-          className={cn(
-            'shrink-0 text-[var(--color-rail-ink-3)] hover:text-white',
-            reveal(expanded),
-          )}
-        >
-          <Icon name="more-vertical" size={13} />
-        </button>
-      </div>
+    <div className="flex items-center gap-2 border-t border-[var(--color-rail-line)] py-2.5 pr-3 pl-[17px] whitespace-nowrap">
+      <span
+        aria-hidden="true"
+        className="h-[22px] w-[22px] shrink-0 rounded-full bg-gradient-to-br from-[#8a7c68] to-[#5c5145]"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] leading-tight font-medium text-white">Ops Center</span>
+        <span className="block text-[10px] leading-tight text-[var(--color-rail-ink-3)]">Admin</span>
+      </span>
+      <button
+        type="button"
+        aria-label="Account menu"
+        className="shrink-0 text-[var(--color-rail-ink-3)] hover:text-white"
+      >
+        <Icon name="more-vertical" size={13} />
+      </button>
     </div>
   );
 }

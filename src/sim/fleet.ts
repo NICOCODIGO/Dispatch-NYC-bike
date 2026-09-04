@@ -90,13 +90,26 @@ export type BikeFault =
   | 'wheel'
   | 'battery-fault';
 
+/**
+ * Written the way a rider would report it, not the way a mechanic would log it.
+ *
+ * These labels are read by dispatchers and coordinators, not by the workshop.
+ * "Wheel out of true" is the correct term for a wheel that wobbles because its
+ * spoke tension is uneven, and it is meaningless to everyone who has not built
+ * a wheel — a person reading a triage list should not have to look up what is
+ * wrong with a bike. The category is unchanged; only the words are.
+ *
+ * They deliberately echo the options a rider is offered after pressing the
+ * repair button, so the label a dispatcher reads is close to the words the
+ * person who reported it actually picked.
+ */
 export const BIKE_FAULT_LABEL: Record<BikeFault, string> = {
   'flat-tyre': 'Flat tyre',
-  brakes: 'Brake fault',
-  drivetrain: 'Chain / drivetrain',
-  handlebars: 'Handlebars loose',
-  wheel: 'Wheel out of true',
-  'battery-fault': 'Battery fault',
+  brakes: 'Brakes not working',
+  drivetrain: 'Chain or gears',
+  handlebars: 'Loose handlebars',
+  wheel: 'Bent wheel',
+  'battery-fault': 'Battery not working',
 };
 
 /** Faults common to any bike, in rough order of how often they are reported. */
@@ -118,6 +131,34 @@ export const CONDITION_LABEL: Record<BikeCondition, string> = {
   'out-of-service': 'Out of service',
 };
 
+/**
+ * Who says this bike is broken.
+ *
+ * The three routes a fault actually enters an operator's system, and they carry
+ * very different confidence:
+ *
+ * - `rider` — the wrench button on the dock. Locks the latch immediately, which
+ *   is the right call for safety and the reason false alarms are expensive:
+ *   nothing else has looked at the bike yet. Riders press it by accident, after
+ *   a docking failure, or out of frustration at a billing error.
+ * - `telemetry` — the bike reported itself. Only e-bikes can, and only about
+ *   things they can sense: pack voltage, controller errors, torque sensor
+ *   faults. No human judgement in the loop, so no false alarm of the rider kind.
+ * - `mechanic` — found during a check on the street. Already verified by
+ *   definition, because the person who can clear it is the one who logged it.
+ *
+ * This is why the source belongs on the record rather than being flattened into
+ * "broken": a rider report and a telemetry fault deserve the same dock lock and
+ * very different levels of belief.
+ */
+export type FaultSource = 'rider' | 'telemetry' | 'mechanic';
+
+export const FAULT_SOURCE_LABEL: Record<FaultSource, string> = {
+  rider: 'Rider report',
+  telemetry: 'Bike telemetry',
+  mechanic: 'Mechanic check',
+};
+
 export interface Bike {
   /** Frame number, the way a mechanic would call it out. */
   id: string;
@@ -127,6 +168,8 @@ export interface Bike {
   condition: BikeCondition;
   /** Null exactly when `condition` is 'ok'. */
   fault: BikeFault | null;
+  /** How the fault was raised. Null exactly when `condition` is 'ok'. */
+  source: FaultSource | null;
   /** Which dock it is sitting in, 1-indexed for humans. */
   dock: number;
 }
@@ -254,6 +297,23 @@ function countsOf(status: StationStatus): Counts {
  * `nowMs` is a parameter rather than `Date.now()` so the charge model is
  * testable and so every bike on one render shares a single clock.
  */
+/**
+ * Where the fault came from.
+ *
+ * A battery fault on an e-bike is the one thing the machine can raise about
+ * itself, and it mostly does — a pack that will not hold voltage does not wait
+ * for somebody to notice and press a button. Everything else is human, and the
+ * dock button dominates: riders outnumber mechanics on a rack by thousands to
+ * one, and the mechanic route only catches what happens to be found during a
+ * check somebody was already making.
+ */
+function sourceFor(seed: string, kind: BikeKind, fault: BikeFault): FaultSource {
+  if (kind === 'electric' && fault === 'battery-fault') {
+    return unit(seed, 'source') < 0.8 ? 'telemetry' : 'rider';
+  }
+  return unit(seed, 'source') < 0.85 ? 'rider' : 'mechanic';
+}
+
 export function bikesAt(status: StationStatus, nowMs: number): Bike[] {
   const { rideable, brokenBikes, electric } = countsOf(status);
   const bikes: Bike[] = [];
@@ -283,12 +343,15 @@ export function bikesAt(status: StationStatus, nowMs: number): Bike[] {
         ? 'out-of-service'
         : 'flagged';
 
+    const fault = condition === 'ok' ? null : faultFor(seed, kind);
+
     bikes.push({
       id: frameNumber(seed),
       kind,
       charge: kind === 'electric' ? chargeFor(seed, status, nowMs) : null,
       condition,
-      fault: condition === 'ok' ? null : faultFor(seed, kind),
+      fault,
+      source: fault === null ? null : sourceFor(seed, kind, fault),
       dock: slot + 1,
     });
   }

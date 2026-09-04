@@ -1,11 +1,11 @@
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD, type ScoreBreakdown } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD, type ScoreBreakdown } from '../model/score';
 import { laneOf } from '../model/triage';
 import type { Tone } from '../ui/tone';
 
 /**
  * What a score means — decided once, for every surface that says it out loud.
  *
- * The comparison `score >= NEEDS_TRUCK_THRESHOLD` had been written into the
+ * The comparison `score >= NEEDS_VEHICLE_THRESHOLD` had been written into the
  * drawer, the hover receipt, the readiness gate and the Score Guide separately.
  * Each was correct in isolation, which is exactly why the divergence was hard
  * to see: the drawer learned about unverified stations and grew a third case,
@@ -28,30 +28,30 @@ export type VerdictKind =
   | 'below'
   /** Counts cannot be trusted, so there is no verdict to give. */
   | 'unverified'
-  /** Mechanically out of service — no truck can fix it. */
+  /** Mechanically out of service — no vehicle can fix it. */
   | 'mechanic';
 
 export function verdictFor(breakdown: ScoreBreakdown, score: number): VerdictKind {
   // Lane first, deliberately. A station that is not reporting can still compute
-  // a high score off stale counts, and `needsTruck` is false for it regardless
+  // a high score off stale counts, and `needsVehicle` is false for it regardless
   // — which is how the old code produced a big red number above the words "no
-  // truck needed yet". Neither answer was wrong; the question was.
+  // vehicle needed yet". Neither answer was wrong; the question was.
   const lane = laneOf(breakdown);
   if (lane === 'unverified') return 'unverified';
   if (lane === 'mechanic') return 'mechanic';
 
   if (score >= CRITICAL_THRESHOLD) return 'critical';
-  if (score >= NEEDS_TRUCK_THRESHOLD) return 'dispatch';
+  if (score >= NEEDS_VEHICLE_THRESHOLD) return 'dispatch';
   return 'below';
 }
 
 /** One line, for places with no room to explain — the hover receipt. */
 export const VERDICT_LINE: Record<VerdictKind, string> = {
   critical: `At or above the ${CRITICAL_THRESHOLD}-point critical line — send one now.`,
-  dispatch: `At or above the ${NEEDS_TRUCK_THRESHOLD}-point dispatch threshold — needs a truck.`,
-  below: `Below the ${NEEDS_TRUCK_THRESHOLD}-point dispatch threshold.`,
+  dispatch: `At or above the ${NEEDS_VEHICLE_THRESHOLD}-point dispatch threshold — needs a vehicle.`,
+  below: `Below the ${NEEDS_VEHICLE_THRESHOLD}-point dispatch threshold.`,
   unverified: 'Excluded from scoring — this is what it would score if the counts were trusted.',
-  mechanic: 'A truck cannot fix this — it is mechanically out of service.',
+  mechanic: 'A vehicle cannot fix this — it is mechanically out of service.',
 };
 
 export const VERDICT_TONE: Record<VerdictKind, Tone> = {
@@ -63,6 +63,6 @@ export const VERDICT_TONE: Record<VerdictKind, Tone> = {
 };
 
 /** True when this verdict means a vehicle should actually be sent. */
-export function wantsTruck(kind: VerdictKind): boolean {
+export function wantsVehicle(kind: VerdictKind): boolean {
   return kind === 'critical' || kind === 'dispatch';
 }

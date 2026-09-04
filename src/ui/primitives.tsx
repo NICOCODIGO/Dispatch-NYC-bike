@@ -4,7 +4,7 @@ import { Icon, type IconName } from './Icon';
 import { TipBody, TipTitle, Tooltip } from './Tooltip';
 import { linkifyNode } from '../content/definitions';
 import { TONE, toneForScore, type Tone } from './tone';
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import { cn } from '../lib/cn';
 
 /* ---------------------------------------------------------------------------
@@ -286,9 +286,9 @@ function bandDepth(score: number | null): number {
   const [lo, hi] =
     score >= CRITICAL_THRESHOLD
       ? [CRITICAL_THRESHOLD, 100]
-      : score >= NEEDS_TRUCK_THRESHOLD
-        ? [NEEDS_TRUCK_THRESHOLD, CRITICAL_THRESHOLD]
-        : [0, NEEDS_TRUCK_THRESHOLD];
+      : score >= NEEDS_VEHICLE_THRESHOLD
+        ? [NEEDS_VEHICLE_THRESHOLD, CRITICAL_THRESHOLD]
+        : [0, NEEDS_VEHICLE_THRESHOLD];
   return Math.min(1, Math.max(0, (score - lo) / (hi - lo)));
 }
 
@@ -343,19 +343,28 @@ export function Bar({
   value,
   tone = 'ok',
   height = 5,
+  mark,
   className,
   trackClassName,
 }: {
   value: number | null;
   tone?: Tone;
   height?: number;
+  /**
+   * A target notch at 0–1, drawn across the track.
+   *
+   * A bar on its own only says how full something is. A bar with a mark says
+   * whether that is enough, which is a different sentence and the only one
+   * worth putting next to a target.
+   */
+  mark?: number;
   className?: string;
   trackClassName?: string;
 }) {
   return (
     <span
       className={cn(
-        'block w-full overflow-hidden rounded-full bg-[var(--color-line-soft)]',
+        'relative block w-full overflow-hidden rounded-full bg-[var(--color-line-soft)]',
         trackClassName,
         className,
       )}
@@ -365,6 +374,13 @@ export function Bar({
         <span
           className="block h-full rounded-full"
           style={{ width: `${Math.min(100, value * 100)}%`, backgroundColor: TONE[tone].fg }}
+        />
+      )}
+      {mark !== undefined && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 w-px bg-[var(--color-ink-2)]"
+          style={{ left: `${Math.min(100, Math.max(0, mark * 100))}%` }}
         />
       )}
     </span>
@@ -383,8 +399,8 @@ export interface StatCardProps {
   tone?: Tone;
   /** The line under the value. */
   foot?: ReactNode;
-  /** Draws a fill bar in place of the footer text. */
-  bar?: { value: number; tone: Tone };
+  /** Draws a fill bar above the footer. `mark` notches a target on the track. */
+  bar?: { value: number; tone: Tone; mark?: number };
   /** Navigates to the screen this number summarises. */
   to?: string;
   /** Acts on the current screen instead of leaving it. */
@@ -455,7 +471,7 @@ export function StatCard({
           both, and dropping one left the only percentage on the row unexplained. */}
       {bar && (
         <span className="mt-2.5 block">
-          <Bar value={bar.value} tone={bar.tone} height={5} />
+          <Bar value={bar.value} tone={bar.tone} height={5} mark={bar.mark} />
         </span>
       )}
       {foot && <span className="mt-1.5 block text-[10px] text-[var(--color-ink-3)]">{foot}</span>}

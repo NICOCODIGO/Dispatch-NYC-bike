@@ -55,22 +55,22 @@ function station(over: {
 const score = (stations: JoinedStation[]) => scoreNetwork(stations, NOW, P90);
 const summaryOf = (stations: JoinedStation[]) => summarizeAll(score(stations));
 
-// A truck-actionable failure, a mechanical one, and an untrustworthy one.
+// A vehicle-actionable failure, a mechanical one, and an untrustworthy one.
 const EMPTY = () => station({ bikes: 0, docks: 40 });
 const FULL = () => station({ bikes: 40, docks: 0 });
 const BROKEN = () => station({ renting: false, returning: false });
 const STALE = () => station({ bikes: 0, docks: 40, ageMin: 120 });
 
 describe('triage', () => {
-  it('routes truck-fixable failures to the truck lane', () => {
+  it('routes vehicle-fixable failures to the vehicle lane', () => {
     const lanes = triage(score([EMPTY(), FULL(), station({ bikes: 2, docks: 38 })]));
-    expect(lanes.truck).toHaveLength(3);
+    expect(lanes.vehicle).toHaveLength(3);
     expect(lanes.mechanic).toHaveLength(0);
   });
 
-  it('routes mechanical failures away from the truck lane', () => {
+  it('routes mechanical failures away from the vehicle lane', () => {
     const lanes = triage(score([BROKEN(), station({ returning: false })]));
-    expect(lanes.truck).toHaveLength(0);
+    expect(lanes.vehicle).toHaveLength(0);
     expect(lanes.mechanic).toHaveLength(2);
   });
 
@@ -88,52 +88,52 @@ describe('triage', () => {
       score([station({ bikes: 20, docks: 20 }), station({ installed: false, bikes: 0, docks: 0 })]),
     );
     expect(lanes.quiet).toHaveLength(2);
-    expect(lanes.truck).toHaveLength(0);
+    expect(lanes.vehicle).toHaveLength(0);
   });
 
   it('assigns every station to exactly one lane', () => {
     const scored = score([EMPTY(), FULL(), BROKEN(), STALE(), station({ bikes: 20, docks: 20 })]);
     const lanes = triage(scored);
     const total =
-      lanes.truck.length + lanes.mechanic.length + lanes.unverified.length + lanes.quiet.length;
+      lanes.vehicle.length + lanes.mechanic.length + lanes.unverified.length + lanes.quiet.length;
     expect(total).toBe(scored.length);
   });
 
-  it('never puts an outage-signalled station in the truck lane', () => {
+  it('never puts an outage-signalled station in the vehicle lane', () => {
     const lanes = triage(score([BROKEN(), EMPTY(), station({ renting: false, bikes: 5 })]));
-    for (const s of lanes.truck) expect(s.breakdown.signal).not.toBe('outage');
+    for (const s of lanes.vehicle) expect(s.breakdown.signal).not.toBe('outage');
   });
 
   it('preserves worst-first order within a lane', () => {
     const lanes = triage(score([station({ bikes: 4, docks: 36 }), EMPTY(), FULL()]));
-    const scores = lanes.truck.map((s) => s.breakdown.score);
+    const scores = lanes.vehicle.map((s) => s.breakdown.score);
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
   });
 });
 
-describe('summary counts only truck work as truck work', () => {
-  it('excludes mechanic and unverified stations from the truck total', () => {
+describe('summary counts only vehicle work as vehicle work', () => {
+  it('excludes mechanic and unverified stations from the vehicle total', () => {
     const s = summaryOf([EMPTY(), FULL(), BROKEN(), BROKEN(), STALE()]);
-    expect(s.needsTruck).toBe(2);
+    expect(s.needsVehicle).toBe(2);
     expect(s.mechanic).toBe(2);
     expect(s.unverified).toBe(1);
   });
 
-  it('separates the two failure sides, which need opposite truck actions', () => {
+  it('separates the two failure sides, which need opposite vehicle actions', () => {
     const s = summaryOf([EMPTY(), EMPTY(), FULL(), station({ bikes: 10, docks: 10 })]);
     expect(s.emptySide).toBe(2);
     expect(s.fullSide).toBe(1);
     expect(s.dominant).toMatchObject({ signal: 'empty', count: 2 });
   });
 
-  it('names the worst truck-actionable station, never a broken one', () => {
-    // The broken station scores higher, but a truck cannot fix it.
+  it('names the worst vehicle-actionable station, never a broken one', () => {
+    // The broken station scores higher, but a vehicle cannot fix it.
     const stations = [BROKEN(), EMPTY()];
     const scored = score(stations);
     const lanes = triage(scored);
     const s = summarize(scored, lanes);
     expect(scored[0]!.breakdown.category).toBe('unusable'); // it does outrank
-    expect(s.worstTruck?.name).toBe(lanes.truck[0]!.station.name);
+    expect(s.worstVehicle?.name).toBe(lanes.vehicle[0]!.station.name);
     expect(laneOf(scored[0]!.breakdown)).toBe('mechanic');
   });
 
@@ -148,7 +148,7 @@ describe('summary counts only truck work as truck work', () => {
     expect(s.networkFill).toBeNull();
   });
 
-  it('tallies the worst ten from truck-actionable stations only', () => {
+  it('tallies the worst ten from vehicle-actionable stations only', () => {
     const s = summaryOf([
       ...Array.from({ length: 4 }, () => station({ bikes: 0, docks: 40, borough: 'Brooklyn' })),
       ...Array.from({ length: 6 }, () => station({ renting: false, returning: false, borough: 'Queens' })),
@@ -178,7 +178,7 @@ describe('queue filtering', () => {
       ]),
     );
 
-  it('shows only truck-actionable stations by default', () => {
+  it('shows only vehicle-actionable stations by default', () => {
     const names = applyFilters(fixture(), base).map((s) => s.station.name);
     expect(names).toEqual(['Alpha St', 'Bravo Ave']);
   });

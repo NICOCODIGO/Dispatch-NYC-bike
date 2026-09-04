@@ -15,7 +15,7 @@ export type { StationRow, StatusLabel };
  * stayed on the page long enough to become actively misleading — a reader would
  * take the whole console for a mock.
  *
- * What remains is the things GBFS genuinely does not carry: trucks, the field
+ * What remains is the things GBFS genuinely does not carry: vehicles, the field
  * roster, seed work orders, and a few panels still labelled as fixtures on
  * screen. Everything about stations — counts, faults, timestamps, scores — now
  * comes from the live feed through `src/data`, `src/model` and `src/store`.
@@ -46,8 +46,8 @@ export const ZONES: Zone[] = [
 ];
 
 export const TOTAL_STATIONS = 902;
-export const TRUCKS_ACTIVE = 5;
-export const TRUCKS_TOTAL = 8;
+export const VEHICLES_ACTIVE = 5;
+export const VEHICLES_TOTAL = 8;
 
 // `CONSOLE_CLOCK = '14:02'` stood here, a frozen "now" so fixture timestamps
 // could agree with each other. It was already unused: the activity log stamps
@@ -72,6 +72,7 @@ export const STATIONS: StationRow[] = [
     updated: '2m ago',
     fill: 0,
     fillTone: 'empty',
+    serving: false,
     stationNumber: '#102',
   },
   {
@@ -85,6 +86,7 @@ export const STATIONS: StationRow[] = [
     updated: '3m ago',
     fill: 0.97,
     fillTone: 'flood',
+    serving: true,
     stationNumber: '#244',
   },
   {
@@ -99,6 +101,7 @@ export const STATIONS: StationRow[] = [
     fill: 0.04,
     fillTone: 'empty',
     fillLabel: '4% full',
+    serving: true,
     stationNumber: '#311',
   },
   {
@@ -113,6 +116,7 @@ export const STATIONS: StationRow[] = [
     fill: 0.97,
     fillTone: 'warn',
     fillLabel: '97% full',
+    serving: true,
     stationNumber: '#182',
   },
   {
@@ -127,6 +131,7 @@ export const STATIONS: StationRow[] = [
     fill: 0.06,
     fillTone: 'warn',
     fillLabel: '6% full',
+    serving: true,
     stationNumber: '#408',
   },
   {
@@ -141,6 +146,7 @@ export const STATIONS: StationRow[] = [
     fill: 0.96,
     fillTone: 'warn',
     fillLabel: '96% full',
+    serving: true,
     stationNumber: '#517',
   },
   {
@@ -155,6 +161,7 @@ export const STATIONS: StationRow[] = [
     fill: 0.33,
     fillTone: 'ok',
     fillLabel: '33% full',
+    serving: true,
     stationNumber: '#442',
   },
   {
@@ -170,6 +177,7 @@ export const STATIONS: StationRow[] = [
     fillTone: 'mute',
     fillLabel: 'unknown',
     warning: 'Last seen 72 min ago — not scored',
+    serving: false,
     stationNumber: '#7244',
   },
 ];
@@ -196,6 +204,7 @@ export const OFF_QUEUE_STATIONS: StationRow[] = [
     fillTone: 'mute',
     fillLabel: 'unknown',
     warning: 'Last seen 104 min ago — not scored',
+    serving: false,
     stationNumber: '#5116',
   },
   {
@@ -211,6 +220,7 @@ export const OFF_QUEUE_STATIONS: StationRow[] = [
     fillTone: 'mute',
     fillLabel: 'unknown',
     warning: 'Last seen 65 min ago — not scored',
+    serving: false,
     stationNumber: '#6421',
   },
   {
@@ -225,6 +235,7 @@ export const OFF_QUEUE_STATIONS: StationRow[] = [
     fill: 0.88,
     fillTone: 'warn',
     fillLabel: '88% full',
+    serving: true,
     stationNumber: '#629',
   },
 ];
@@ -238,7 +249,7 @@ export function stationById(id: string): StationRow | null {
 
 /** The six headline numbers above the queue. */
 export const QUEUE_STATS = {
-  needsTruck: 47,
+  needsVehicle: 47,
   empty: 62,
   emptyDelta: 4,
   flooded: 163,
@@ -329,15 +340,15 @@ export const SCORE_NOTE =
 /**
  * Where a vehicle is in its run.
  *
- * `on-site` is separate from `loading` deliberately: a truck that has arrived
+ * `on-site` is separate from `loading` deliberately: a vehicle that has arrived
  * and is working is not the same as one filling up at a depot, and a
  * coordinator must not count that station as solved until the crew leaves.
  */
-export type TruckState = 'en-route' | 'loading' | 'on-site' | 'idle';
+export type VehicleState = 'en-route' | 'loading' | 'on-site' | 'idle';
 
-export interface Truck {
+export interface Vehicle {
   id: string;
-  state: TruckState;
+  state: VehicleState;
   /** Home base, so dispatch runs can be rolled up per depot. */
   depot: string;
   /** Sub-line on the queue rail. */
@@ -357,10 +368,10 @@ export interface Truck {
   lat: number;
   lon: number;
   /**
-   * Minutes until this truck can accept a *new* job — not until its current
+   * Minutes until this vehicle can accept a *new* job — not until its current
    * leg ends.
    *
-   * Declared rather than derived. A truck 6 minutes from its stop is not free
+   * Declared rather than derived. A vehicle 6 minutes from its stop is not free
    * in 6 minutes; it still has to unload. Deriving that would mean inventing a
    * service-time model and presenting it as a measurement, so the number is
    * stated outright as fixture and the panel says so.
@@ -368,7 +379,7 @@ export interface Truck {
   freeInMin: number;
 }
 
-export const TRUCKS: Truck[] = [
+export const VEHICLES: Vehicle[] = [
   {
     id: '#4',
     depot: 'E 18 St',
@@ -443,7 +454,7 @@ export const TRUCKS: Truck[] = [
   {
     // Idle but not empty — came back from a collect run with bikes still on
     // board. Without one of these the fleet had three identical empty idles and
-    // "an idle truck carrying 26 is a different asset from an idle truck
+    // "an idle vehicle carrying 26 is a different asset from an idle vehicle
     // carrying none" was a true statement about a case the data never produced.
     id: '#5',
     depot: 'Sunset Park',
@@ -468,7 +479,7 @@ export const TRUCKS: Truck[] = [
   },
 ];
 
-export const TRUCK_STATE_LABEL: Record<TruckState, string> = {
+export const VEHICLE_STATE_LABEL: Record<VehicleState, string> = {
   'en-route': 'En Route',
   loading: 'Loading',
   'on-site': 'On Site',
@@ -482,33 +493,33 @@ export const TRUCK_STATE_LABEL: Record<TruckState, string> = {
  * half is what choosing it does to them. "En Route" is not a status so much as
  * a warning that re-tasking abandons something already in progress.
  */
-export const TRUCK_STATE_AVAILABILITY: Record<TruckState, string> = {
+export const VEHICLE_STATE_AVAILABILITY: Record<VehicleState, string> = {
   idle: 'Free now — can leave immediately.',
   loading: 'Free shortly — finishing a load first.',
   'en-route': 'Only by re-tasking — you would abandon its current job.',
   'on-site': 'Only by re-tasking — the crew is mid-job at a station.',
 };
 
-/** The order a truck moves through them. */
-export const TRUCK_STATE_CYCLE: TruckState[] = ['idle', 'loading', 'en-route', 'on-site'];
+/** The order a vehicle moves through them. */
+export const VEHICLE_STATE_CYCLE: VehicleState[] = ['idle', 'loading', 'en-route', 'on-site'];
 
 /** One line each, for the legend on Fleet Operations. */
-export const TRUCK_STATE_MEANING: Record<TruckState, string> = {
+export const VEHICLE_STATE_MEANING: Record<VehicleState, string> = {
   idle: 'Parked at a depot with no job. Driver available, vehicle doing nothing.',
   loading: 'Moving bikes on or off — taking stock at a depot, or collecting from a station that is too full. Not travelling.',
   'en-route': 'Driving between two points, carrying bikes to a drop-off or heading to a pickup.',
   'on-site': 'Arrived and working the station. The job is not finished, so the station does not count as solved yet.',
 };
 
-export const TRUCK_STATE_TONE: Record<TruckState, Tone> = {
+export const VEHICLE_STATE_TONE: Record<VehicleState, Tone> = {
   'en-route': 'ok',
   loading: 'warn',
   'on-site': 'flood',
   idle: 'mute',
 };
 
-/** The rail on Truck Dispatch: what #4 is doing and what it does next. */
-export const TRUCK_FOCUS = {
+/** The rail on Vehicle Dispatch: what #4 is doing and what it does next. */
+export const VEHICLE_FOCUS = {
   id: '#4',
   current: { title: 'Unloading 12 Classic Bikes', where: 'W 72 St & Columbus Ave' },
   next: { in: 'NEXT: 8 MIN', title: 'Pickup 8 Flooded Bikes', where: 'Central Park W & 72 St' },
@@ -609,7 +620,7 @@ export const WORK_ORDERS: WorkOrder[] = [
 /**
  * Where the depots are.
  *
- * Real coordinates for invented bases, on the same reasoning the trucks carry
+ * Real coordinates for invented bases, on the same reasoning the vehicles carry
  * real lat/lon: "18 minutes away" computed from a depot *name* would be a
  * fabricated number wearing a precise costume, while the same figure derived
  * from a position is arithmetic and wrong only in the way every travel estimate
@@ -716,7 +727,7 @@ export const DEMAND_X_LABELS = ['0:00', '3:00', '6:00', '9:00', '12:00', '15:00'
 
 export interface ZoneDetail {
   needsDispatch: number;
-  assignedTrucks: number;
+  assignedVehicles: number;
   chronicOffenders: number;
   avgFill: number;
   clusterTitle: string;
@@ -735,7 +746,7 @@ const RANKED_BY_ZONE: Record<string, string[]> = {
 
 /** Manhattan is the comped zone; its four numbers are taken from the design. */
 const ZONE_OVERRIDES: Record<string, Partial<ZoneDetail>> = {
-  manhattan: { needsDispatch: 14, assignedTrucks: 2, chronicOffenders: 3, avgFill: 0.64 },
+  manhattan: { needsDispatch: 14, assignedVehicles: 2, chronicOffenders: 3, avgFill: 0.64 },
 };
 
 export function zoneDetail(slug: string): ZoneDetail {
@@ -750,8 +761,8 @@ export function zoneDetail(slug: string): ZoneDetail {
   const share = zone.stations / TOTAL_STATIONS;
 
   return {
-    needsDispatch: Math.max(1, Math.round(QUEUE_STATS.needsTruck * share)),
-    assignedTrucks: Math.max(1, Math.round(TRUCKS_ACTIVE * share)),
+    needsDispatch: Math.max(1, Math.round(QUEUE_STATS.needsVehicle * share)),
+    assignedVehicles: Math.max(1, Math.round(VEHICLES_ACTIVE * share)),
     chronicOffenders: Math.max(1, Math.round(9 * share)),
     avgFill: 0.5 + share * 0.6,
     clusterTitle: `${zone.name} Priority Clusters`,

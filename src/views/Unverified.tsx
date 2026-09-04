@@ -20,7 +20,7 @@ import { formatReportedAge } from '../lib/time';
  *
  * The framing is deliberate: this is a hardware page, not a rebalancing page.
  * A station that has not phoned home in an hour is a comms or power problem,
- * and its fill counts — whatever they say — are not evidence a truck should
+ * and its fill counts — whatever they say — are not evidence a vehicle should
  * act on. `triage.ts` has already pulled these out of the queue; this screen
  * is where they land.
  *

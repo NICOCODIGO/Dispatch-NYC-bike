@@ -5,6 +5,7 @@ import { Bar, Button, ScoreBadge } from '../ui/primitives';
 import { ProvenancePill } from '../ui/ProvenancePill';
 import { StationAssets } from './StationAssets';
 import {
+  BIKE_FAULT_LABEL,
   LOW_CHARGE,
   bikesAt,
   docksAt,
@@ -12,12 +13,13 @@ import {
   summarize,
   summarizeDocks,
 } from '../sim/fleet';
+import { applyTriage, awaitingTriage, faultTally } from '../model/pickup';
 import { TONE, type Tone } from '../ui/tone';
 import {
   CAPACITY_WEIGHT_CAP,
   CATEGORY_LABEL,
   CRITICAL_THRESHOLD,
-  NEEDS_TRUCK_THRESHOLD,
+  NEEDS_VEHICLE_THRESHOLD,
   STALENESS_GRACE_MINUTES,
   type ScoreBreakdown,
 } from '../model/score';
@@ -26,7 +28,7 @@ import { verdictFor } from '../data/verdict';
 import { laneOf } from '../model/triage';
 import { formatAgo, formatClock, formatReportedAge } from '../lib/time';
 import { DURATION_CAP, DURATION_PER_HOUR, applyDuration, type Duration } from '../data/duration';
-import { SCORE_NOTE, TRUCKS, factorsFor } from '../mock/data';
+import { SCORE_NOTE, VEHICLES, factorsFor } from '../mock/data';
 import type { StationRow } from '../data/stationRow';
 import { useConsole } from '../state/useConsole';
 import { cn } from '../lib/cn';
@@ -47,7 +49,7 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
   const [assets, setAssets] = useState<'bikes' | 'docks' | null>(null);
 
   // The footer used to ask only "is this mechanical?", so a healthy station
-  // clicked on the map got a full-width black Dispatch Truck Here directly
+  // clicked on the map got a full-width black Dispatch Vehicle Here directly
   // under a panel saying nothing was wrong with it.
   const verdict = row.breakdown ? verdictFor(row.breakdown, row.score ?? 0) : null;
   const unwanted = verdict === 'below' || verdict === 'unverified';
@@ -88,9 +90,6 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
   }, [onClose]);
 
   const total = factors.reduce((sum, f) => sum + f.points, 0);
-  // Straight from the model's ratio, which divides by slots actually reported
-  // usable — never recomputed here against the unreliable nameplate.
-  const pct = row.fill === null ? null : Math.round(row.fill * 100);
 
   return (
     <>
@@ -165,15 +164,42 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
               </div>
             </div>
 
-            <p className="num mt-2.5 text-[10px] text-[var(--color-ink-3)]">
-              {pct === null ? 'fill unknown' : `${pct}% full`} ·{' '}
-              {row.bikes === null ? '—' : row.bikes} bikes / {row.openDocks ?? row.docks} open
-            </p>
+            {/* The three readings the score is derived from, stated before the
+                derivation and visibly separated from it.
+
+                They were here once as "0% full · 0 bikes / 115 open" — one grey
+                run-on line under the badge, which read as a caption for the
+                score rather than as its inputs, and got cut for repeating what
+                the panel says further down. The repetition was real; the
+                mistake was deleting them rather than promoting them. A measured
+                number and a modelled one should not share a typeface and a
+                colour, and the measured ones should come first: this is a
+                fixture-free fact about a rack in Brooklyn, and 94 is an opinion
+                about it. */}
+            {row.bikes !== null && (
+              <>
+                <p className="eyebrow mt-3 border-t border-[var(--color-line)] pt-2.5 text-[9px]">
+                  What the feed measured
+                </p>
+                <dl className="mt-1.5 grid grid-cols-3 gap-2">
+                  <Reading value={row.bikes} label="bikes to rent" />
+                  <Reading value={row.openDocks ?? row.docks} label="docks free" />
+                  <Reading
+                    value={row.fill === null ? '—' : `${Math.round(row.fill * 100)}%`}
+                    label="full"
+                  />
+                </dl>
+              </>
+            )}
           </div>
 
           {row.breakdown ? (
             <>
-              <Readiness row={row} />
+              <Readiness
+                row={row}
+                onDispatch={() => setComposing(true)}
+                onMechanic={onClose}
+              />
               {/* Above the receipt, not below it. What is physically at the
                   station is the most concrete thing in this drawer, and it was
                   sitting under two sections of explanation — so the tangible
@@ -241,40 +267,21 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
           <StationAssets row={row} initial={assets} onClose={() => setAssets(null)} />
         )}
 
+        {/* The dispatch button moved up into the Summary card, beside the
+            verdict that recommends it. What is left here is Close, which is not
+            an answer to anything the panel argues and so belongs in the chrome.
+
+            A fixture row has no live verdict and therefore no Summary card to
+            carry the action, so it keeps its button here. */}
         <div className="sticky bottom-0 flex flex-col gap-1 border-t border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
-          {/* Nothing to dispatch to a station a truck cannot fix. */}
-          {row.action?.kind === 'mechanic' ? (
-            <Button variant="outline" icon="wrench" className="w-full" onClick={onClose}>
-              Needs a mechanic. Open Maintenance Ops
-            </Button>
-          ) : unwanted ? (
-            /* Demoted, not removed. The board's opinion is that this trip is
-               not worth a run, and the button should stop looking like the
-               recommended action — but a dispatcher with local knowledge the
-               feed does not have is still allowed to overrule it, and a
-               console that silently disables the override just gets worked
-               around. */
+          {!row.breakdown && row.action?.kind !== 'mechanic' && (
             <Button
-              variant="outline"
-              icon="truck"
-              className="w-full"
-              onClick={() => setComposing(true)}
-              title={
-                verdict === 'unverified'
-                  ? 'This station has not reported recently. You would be dispatching on counts nobody can vouch for.'
-                  : 'This station is below the dispatch threshold. The board does not think this trip is worth a run.'
-              }
-            >
-              {verdict === 'unverified' ? 'Dispatch anyway, counts unverified' : 'Dispatch anyway'}
-            </Button>
-          ) : (
-            <Button
-              variant="dark"
-              icon="truck"
+              variant={unwanted ? 'outline' : 'dark'}
+              icon="vehicle"
               className="w-full"
               onClick={() => setComposing(true)}
             >
-              Dispatch Truck Here
+              {unwanted ? 'Dispatch anyway' : 'Dispatch Vehicle Here'}
             </Button>
           )}
           <Button variant="ghost" onClick={onClose} className="w-full">
@@ -321,42 +328,64 @@ function Measured({
   breakdown: ScoreBreakdown;
 }) {
   const [open, setOpen] = useState(false);
-  const { fill, staleness } = breakdown;
+  const { fill } = breakdown;
   const nameplateDisagrees = raw.usableSlots !== raw.capacity;
 
   return (
     <section className="mt-5">
-      <h4 className="eyebrow">What the feed reported</h4>
+      {/* The heading and the three boxes under it — Bikes, Open docks,
+          Reported — are gone. They restated the trio in the masthead, which is
+          now labelled "What the feed measured" and sits above the score it
+          produced; the age was already the Staleness line on the receipt just
+          above this. Saying the same three numbers twice in one panel taught a
+          reader that the second telling was not worth reading, which is a bad
+          habit to teach on the section that also holds the audit trail.
 
-      <dl className="mt-2 grid grid-cols-3 gap-2">
-        <Fact label="Bikes" value={fill.bikes} />
-        <Fact label="Open docks" value={fill.docks} />
-        <Fact
-          label="Reported"
-          value={staleness.ageMinutes === null ? 'never' : formatReportedAge(staleness.ageMinutes)}
-          small
-        />
-      </dl>
+          What is left only ever existed here: why the denominator is what it
+          is, and the raw dump. */}
 
+      {/* Why the denominator is what it is. This lived in two places: here as
+          "the nameplate disagrees", and again at the bottom of the drawer as
+          "N of M docks out of service" — two framings of one fact, computed
+          from different fields, so they could print different dock counts for
+          the same station. Worse, the more precise of the two sat inside the
+          section labelled Simulated, which made `num_docks_disabled` — a real
+          number the operator publishes — look invented.
+
+          It is said once, here, where the feed's own figures are.
+
+          Ordered built → working → filled, which is the order the facts cause
+          each other. It used to open on "0 of 102 working slots", making the
+          reader hold an unexplained 102 until a second sentence justified it —
+          and that sentence ran two clauses together on a doubled "so", which is
+          most of why it read as gibberish. The word "nameplate" went with it:
+          it is the term of art for what a station was built with, and this
+          paragraph is the one place in the app that cannot assume the term. */}
       <p className="mt-2 text-[10px] leading-relaxed text-[var(--color-ink-2)]">
-        {fill.bikes} of {raw.usableSlots} working slots hold a bike
-        {fill.ratio !== null && <> — {Math.round(fill.ratio * 100)}% full</>}.
-        {/* Why the denominator is what it is. This lived in two places: here as
-            "the nameplate disagrees", and again at the bottom of the drawer as
-            "N of M docks out of service" — two framings of one fact, computed
-            from different fields, so they could print different dock counts for
-            the same station. Worse, the more precise of the two sat inside the
-            section labelled Simulated, which made `num_docks_disabled` — a real
-            number the operator publishes — look invented.
-
-            It is said once, here, where the feed's own figures are. */}
-        {raw.docksDisabled === 0 && nameplateDisagrees && (
+        {raw.docksDisabled === 0 && nameplateDisagrees ? (
           <>
-            {' '}
-            The nameplate claims {raw.capacity} docks, so{' '}
-            {Math.abs(raw.capacity - raw.usableSlots)}{' '}
-            {Math.abs(raw.capacity - raw.usableSlots) === 1 ? 'is' : 'are'} not reporting as usable
-            so fill is measured against what works, not what was installed.
+            This station was built with {raw.capacity} docks, but only {raw.usableSlots} are
+            reporting as usable right now
+            {/* Name the cause when the feed's own numbers account for the whole
+                gap. A dock holding a broken bike is counted by GBFS as neither
+                an available bike nor an open dock, so it silently vanishes from
+                both figures — which is exactly the missing slot the reader is
+                being asked to accept on trust. */}
+            {raw.bikesDisabled > 0 &&
+              raw.capacity - raw.usableSlots === raw.bikesDisabled && (
+                <>
+                  , because {raw.bikesDisabled} of them are holding broken bikes that nobody can
+                  rent and nothing can be parked in
+                </>
+              )}
+            . {fill.bikes} of those {raw.usableSlots} hold a bike
+            {fill.ratio !== null && <> — {Math.round(fill.ratio * 100)}% full</>}. Fill is always
+            measured against what works, never against what was installed.
+          </>
+        ) : (
+          <>
+            {fill.bikes} of {raw.usableSlots} working slots hold a bike
+            {fill.ratio !== null && <> — {Math.round(fill.ratio * 100)}% full</>}.
           </>
         )}
       </p>
@@ -371,7 +400,7 @@ function Measured({
           </strong>
           , so fill is measured against the {raw.usableSlots} that work rather than the{' '}
           {raw.capacity} on the nameplate. A station can read as full because it is full, or
-          because most of it is broken, and only one of those is a truck job.
+          because most of it is broken, and only one of those is a vehicle job.
         </Callout>
       )}
 
@@ -407,30 +436,6 @@ function Measured({
         </dl>
       )}
     </section>
-  );
-}
-
-function Fact({
-  label,
-  value,
-  small = false,
-}: {
-  label: string;
-  value: number | string | null;
-  small?: boolean;
-}) {
-  return (
-    <div className="rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2 py-1.5">
-      <dt className="eyebrow text-[10px]">{label}</dt>
-      <dd
-        className={cn(
-          'num mt-1 leading-none font-semibold text-[var(--color-ink)]',
-          small ? 'text-[11px]' : 'text-[15px]',
-        )}
-      >
-        {value ?? '—'}
-      </dd>
-    </div>
   );
 }
 
@@ -596,17 +601,26 @@ function AssetTile({
  * The Dispatch button was always available and always looked equally sensible,
  * which made it a button rather than a decision. These are the four things a
  * coordinator checks in their head before committing a vehicle; putting them
- * on screen means the awkward cases — no free truck, an order bigger than one
+ * on screen means the awkward cases — no free vehicle, an order bigger than one
  * load — are visible before the click instead of discovered after it.
  */
-function Readiness({ row }: { row: StationRow }) {
+function Readiness({
+  row,
+  onDispatch,
+  onMechanic,
+}: {
+  row: StationRow;
+  /** Absent on fixture rows, which have no live verdict to act on. */
+  onDispatch?: () => void;
+  onMechanic?: () => void;
+}) {
   const assignments = useConsole((s) => s.assignments);
 
   const lane = row.breakdown ? laneOf(row.breakdown) : null;
   const fresh = row.breakdown?.staleness.reason === 'current';
   const ordered = row.action?.bikes ?? 0;
-  const biggestTruck = Math.max(...TRUCKS.map((t) => t.capacity));
-  const free = TRUCKS.filter((t) => t.state === 'idle' && !assignments[t.id]).length;
+  const biggestVehicle = Math.max(...VEHICLES.map((t) => t.capacity));
+  const free = VEHICLES.filter((t) => t.state === 'idle' && !assignments[t.id]).length;
   const score = row.score ?? 0;
 
   /**
@@ -614,41 +628,39 @@ function Readiness({ row }: { row: StationRow }) {
    *
    * Without this the gate happily reported "Ready to dispatch" for a station
    * scoring 30 — every operational check passed, because none of them asked
-   * the first question, which is whether the station needs a truck at all. A
+   * the first question, which is whether the station needs a vehicle at all. A
    * board that cannot tell you to leave something alone will send you to it.
    */
   /*
    * Gated on the verdict, not the lane.
    *
-   * This used to read `lane === 'truck' && score < threshold`, which is only
-   * one of the two ways a station can not need a truck. A healthy station sits
+   * This used to read `lane === 'vehicle' && score < threshold`, which is only
+   * one of the two ways a station can not need a vehicle. A healthy station sits
    * in the `quiet` lane, so it slipped past the guard entirely and got the full
-   * readiness panel — "2 reasons to weigh this first" and a Dispatch Truck Here
+   * readiness panel — "2 reasons to weigh this first" and a Dispatch Vehicle Here
    * button, on a station scoring 6 out of 100.
    *
    * Unreachable while the drawer only opened from the queue, which pools the
-   * truck lane. Putting 2,509 stations on a map made every one of them
+   * vehicle lane. Putting 2,509 stations on a map made every one of them
    * clickable and the hole became the common case.
    */
   if (row.breakdown && verdictFor(row.breakdown, score) === 'below') {
     const healthy = lane === 'quiet';
     return (
-      <section
-        className="mt-4 rounded-lg border p-3"
-        style={{ borderColor: TONE.mute.line, backgroundColor: TONE.mute.bg }}
-      >
+      <section className="mt-4 overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]">
+        <div className="border-l-[3px] p-3" style={{ borderColor: TONE.mute.fg }}>
         <div className="flex items-center gap-2">
-          {/* Grey, not green. "Ready to dispatch" and "no truck needed" are
+          {/* Grey, not green. "Ready to dispatch" and "no vehicle needed" are
               both fine outcomes but they call for opposite actions, and in the
               same green they read as the same verdict at a glance. Green means
               go; this means stand down. */}
           <Icon name="minus-circle" size={13} style={{ color: TONE.mute.fg }} />
           <h4 className="text-[11.5px] font-semibold text-[var(--color-ink)]">
-            {healthy ? 'Nothing wrong here' : 'No truck needed'}
+            {healthy ? 'Nothing wrong here' : 'No vehicle needed'}
           </h4>
         </div>
         <p className="mt-1.5 text-[10px] leading-relaxed text-[var(--color-ink-2)]">
-          Scores {score}, below the {NEEDS_TRUCK_THRESHOLD}-point dispatch threshold.{' '}
+          Scores {score}, below the {NEEDS_VEHICLE_THRESHOLD}-point dispatch threshold.{' '}
           {healthy ? (
             <>
               This station is serving riders on both sides — it has bikes to rent and docks to
@@ -661,12 +673,29 @@ function Readiness({ row }: { row: StationRow }) {
               board so you can watch it, not because it wants a vehicle.
             </>
           )}{' '}
-          Sending a truck now spends a run that{' '}
+          Sending a vehicle now spends a run that{' '}
           <strong className="font-semibold text-[var(--color-ink)]">
             something above the line needs more
           </strong>
           .
         </p>
+        {/* Demoted, not removed. The board's opinion is that this trip is not
+            worth a run, and the button should stop looking like the recommended
+            action — but a dispatcher with local knowledge the feed does not
+            have is still allowed to overrule it, and a console that silently
+            disables the override just gets worked around. */}
+        {onDispatch && (
+          <Button
+            variant="outline"
+            icon="vehicle"
+            className="mt-3 w-full"
+            onClick={onDispatch}
+            title="This station is below the dispatch threshold. The board does not think this trip is worth a run."
+          >
+            Dispatch anyway
+          </Button>
+        )}
+        </div>
       </section>
     );
   }
@@ -674,61 +703,48 @@ function Readiness({ row }: { row: StationRow }) {
   // Ordered worst-first: the first failure is the one that decides the answer,
   // which is what lets the headline name a blocker instead of counting them.
   /*
-   * Each check carries three separate strings, because they are read in three
-   * different places and collapsing them is what made this panel repeat itself.
+   * Each check carries two strings, read in two different places.
    *
-   * `detail` explains the check where it sits in the list. `blocker` is a short
-   * noun phrase for naming it in the headline. `consequence` is what the reader
-   * should do about it, and it is the only one that belongs in the subhead —
-   * the previous version put `blocker` in both the headline and the line under
-   * it, so a blocked station announced "Dispatchable, but it is bigger than one
-   * load" and then immediately explained that it was bigger than one load.
+   * `blocker` is a short noun phrase for naming it in the headline;
+   * `consequence` is what the reader should do about it. Both only ever appear
+   * for a check that *failed* — a passing check produces no text at all, which
+   * is the whole change from the version that listed all four.
+   *
+   * There was a third string, `detail`, explaining each check where it sat in
+   * that list. It went with the list: it existed to give a green tick something
+   * to say, and "a vehicle is free — 3 idle and unassigned" is a sentence that
+   * only gets written because a row needed filling.
    */
   const checks = [
     {
-      ok: lane === 'truck',
-      blocker: 'a truck cannot fix it',
+      ok: lane === 'vehicle',
+      blocker: 'a vehicle cannot fix it',
       consequence: 'Maintenance owns this one. Moving bikes will not change it.',
-      label: 'A truck can fix it',
-      detail:
-        lane === 'truck'
-          ? 'This is a distribution problem. Moving bikes resolves it.'
-          : 'Mechanical or unreadable, so moving bikes changes nothing.',
+      label: 'lane',
     },
     {
       ok: fresh,
       blocker: 'the reading is stale',
-      consequence: 'Worth confirming the counts before committing a vehicle.',
-      label: 'Reading is current',
-      detail: fresh
-        ? `Reported ${formatReportedAge(row.breakdown?.staleness.ageMinutes ?? null)}, inside the ${STALENESS_GRACE_MINUTES}-minute grace window.`
-        : `Reported ${formatReportedAge(row.breakdown?.staleness.ageMinutes ?? null)}, old enough that the counts may have moved since.`,
+      consequence: `Reported ${formatReportedAge(row.breakdown?.staleness.ageMinutes ?? null)}, so the counts may have moved. Worth confirming before committing a vehicle.`,
+      label: 'fresh',
     },
     {
       ok: free > 0,
-      blocker: 'no truck is free',
-      consequence: 'Sending one means pulling it off a station already waiting.',
-      label: 'A truck is free',
-      detail:
-        free > 0
-          ? `${free} idle and unassigned.`
-          : 'Every vehicle is committed to another station.',
+      blocker: 'no vehicle is free',
+      consequence: 'Every vehicle is committed. Sending one means pulling it off a station already waiting.',
+      label: 'free',
     },
     {
-      ok: ordered > 0 && ordered <= biggestTruck,
+      ok: ordered > 0 && ordered <= biggestVehicle,
       // This check fails two opposite ways, nothing to move or too much to
       // move, so the phrase has to say which. It read "bigger than one load"
       // on mechanical stations, whose order is zero.
-      blocker: ordered === 0 ? 'there is nothing to move' : 'it is larger than one truckload',
+      blocker: ordered === 0 ? 'there is nothing to move' : 'it is larger than one load',
       consequence:
         ordered === 0
           ? 'There is no order to fill here.'
-          : `Plan two runs, or send one and accept a partial fix.`,
-      label: 'Fits one load',
-      detail:
-        ordered === 0
-          ? 'No quantity to move.'
-          : `${ordered} bikes against ${biggestTruck} of truck capacity.`,
+          : `${ordered} bikes against ${biggestVehicle} of vehicle capacity. Plan two runs, or send one and accept a partial fix.`,
+      label: 'load',
     },
   ];
 
@@ -754,65 +770,208 @@ function Readiness({ row }: { row: StationRow }) {
         : `Not ready: ${blocked} things to weigh first`;
 
   /*
-   * The subhead advances the reader rather than restating the headline.
+   * A white card with one coloured edge, not a tinted panel.
    *
-   * One blocker gets its consequence, which is the actionable half. Several get
-   * named, because with more than one the reader needs to know which before any
-   * single instruction makes sense.
+   * This was a full amber wash: `TONE.warn.bg` across the whole box on a cream
+   * canvas. Two low-saturation warm tones a few percent apart do not read as
+   * emphasis, they read as a faded patch — the card looked switched off, and
+   * because the tint covered everything, nothing inside it could be emphasised
+   * either. Every word had the same background arguing for its importance.
+   *
+   * The colour now appears exactly twice: a 3px edge, and the icon. Everything
+   * else sits on the surface at full contrast, which is what makes the two
+   * coloured things mean something.
    */
-  const subhead =
-    blocked === 1
-      ? `${sentenceCase(failed[0]!.blocker)}. ${failed[0]!.consequence}`
-      : blocked > 1
-        ? `${sentenceCase(failed.map((f) => f.blocker).join(', and '))}.`
-        : null;
-
   return (
     <section
-      className="mt-4 rounded-lg border p-3"
-      style={{ borderColor: TONE[tone].line, backgroundColor: TONE[tone].bg }}
+      className="mt-4 overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]"
     >
+      <div
+        className="border-l-[3px] p-3"
+        style={{ borderColor: TONE[tone].fg }}
+      >
+      <p className="eyebrow mb-2 text-[9px]">Summary</p>
+
       {/* Icon and text are siblings in a flex row, so the subhead hangs under
           the headline rather than under the icon. It previously sat outside
           this row entirely and started at the card's left edge, which read as a
           separate paragraph rather than as the headline's own second line. */}
       <div className="flex items-start gap-2">
         <span className="mt-[1px] shrink-0" style={{ color: TONE[tone].fg }}>
-          <Icon name={blocked === 0 ? 'truck' : 'alert-triangle'} size={13} />
+          <Icon name={blocked === 0 ? 'vehicle' : 'alert-triangle'} size={13} />
         </span>
         <div className="min-w-0">
           <h4 className="text-[11.5px] leading-snug font-semibold text-[var(--color-ink)]">
             {headline}
           </h4>
-          {subhead && (
-            <p className="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-2)]">{subhead}</p>
-          )}
+          {/* Only the checks that failed, and each with what to do about it.
+              A ticked list of the four checks used to sit at the bottom of this
+              box, and three quarters of it was always the word "yes" — a
+              vehicle can fix it, the reading is current, a vehicle is free —
+              spending twelve lines to say nothing was wrong. The one line that
+              did carry news was already promoted into this subhead, so the list
+              was reprinting the caveat under three passes of green ticks.
+              Failures state themselves here now, and a clean station says so in
+              its headline and stops talking. */}
+          {failed.map((f) => (
+            <p
+              key={f.label}
+              className="mt-1 text-[10px] leading-relaxed text-[var(--color-ink-2)]"
+            >
+              {sentenceCase(f.blocker)}. {f.consequence}
+            </p>
+          ))}
         </div>
       </div>
 
-      <ul className="mt-2 flex flex-col gap-1.5">
-        {checks.map((c) => (
-          <li key={c.label} className="flex items-start gap-1.5">
-            {/* A tick and a warning triangle, not two circles — pass and fail
-                were sharing the info glyph, so the list read as four bullets. */}
-            <span
-              aria-hidden="true"
-              className="mt-[3px] shrink-0"
-              style={{ color: c.ok ? TONE.ok.fg : TONE.warn.fg }}
-            >
-              <Icon name={c.ok ? 'check-circle' : 'alert-triangle'} size={11} />
-            </span>
-            <span className="min-w-0">
-              <span className="text-[10px] font-semibold text-[var(--color-ink)]">{c.label}</span>
-              <span className="block text-[10px] leading-snug text-[var(--color-ink-2)]">
-                {c.detail}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ul>
+        <IssueSummary row={row} />
+
+        {/* The action belongs with the verdict that recommends it.
+            It used to live alone in the sticky footer, four sections below the
+            reasoning — so the panel argued its case at the top and offered the
+            button at the bottom, with the whole receipt in between. Close stays
+            in the footer, because dismissing is not an answer to anything this
+            card says. */}
+        {onDispatch &&
+          (row.action?.kind === 'mechanic' ? (
+            <Button variant="outline" icon="wrench" className="mt-3 w-full" onClick={onMechanic}>
+              Needs a mechanic. Open Maintenance Ops
+            </Button>
+          ) : (
+            <Button variant="dark" icon="vehicle" className="mt-3 w-full" onClick={onDispatch}>
+              {verdictFor(row.breakdown!, score) === 'unverified'
+                ? 'Dispatch anyway, counts unverified'
+                : 'Dispatch Vehicle Here'}
+            </Button>
+          ))}
+      </div>
     </section>
   );
+}
+
+/**
+ * One measured reading: the number large, the word for it underneath.
+ *
+ * Set in ink rather than in a signal colour. These are facts, and the moment a
+ * fact is tinted amber the reader starts reading the tint as a judgement — the
+ * judgement is the badge beside them and the verdict line under them, and it is
+ * the only thing in this block entitled to a colour.
+ */
+function Reading({ value, label }: { value: ReactNode; label: string }) {
+  return (
+    <div>
+      <dd className="num text-[15px] leading-none font-semibold text-[var(--color-ink)]">
+        {value}
+      </dd>
+      <dt className="mt-1 text-[9.5px] leading-tight text-[var(--color-ink-3)]">{label}</dt>
+    </div>
+  );
+}
+
+/**
+ * What is wrong here, in two lines, before any of the dispatch arithmetic.
+ *
+ * The checks below this answer "can we send somebody", which is a useful
+ * question and the wrong first one. A coordinator opening a station wants to
+ * know what is actually the matter with it, and until now the answer was split
+ * across three panels: the supply problem was implied by a percentage in the
+ * masthead, and the hardware problem was four clicks away inside On the rack.
+ * A station could show a confident 94 with failed brakes sitting on the rack
+ * and nothing above the fold would mention the brakes.
+ *
+ * Two lines because there are exactly two kinds of problem a station has, and
+ * they go to different crews: bikes in the wrong place, and bikes that are
+ * broken. Keeping them on separate lines is the same distinction the whole app
+ * is built on — a vehicle fixes one and cannot touch the other.
+ */
+function IssueSummary({ row }: { row: StationRow }) {
+  const triage = useConsole((s) => s.triage);
+  const status = useMemo(() => statusFromRow(row), [row]);
+  const bikes = useMemo(
+    () => (status ? applyTriage(bikesAt(status, Date.now()), triage) : []),
+    [status, triage],
+  );
+
+  const confirmed = useMemo(() => faultTally(bikes, true), [bikes]);
+  const unchecked = useMemo(() => awaitingTriage(bikes, triage).length, [bikes, triage]);
+  const broken = useMemo(
+    () => bikes.filter((b) => b.condition === 'out-of-service'),
+    [bikes],
+  );
+
+  const supply = supplyIssue(row);
+  const dead = broken.length;
+
+  /*
+   * Frame numbers while the list is short enough to be worth reading.
+   *
+   * Naming the machine is what turns this from a statistic into something a
+   * mechanic can act on without opening another panel — "#38472 brakes not
+   * working" is a job, "2 broken" is a number. Past three it stops helping: a
+   * rack with nine dead bikes is a site visit, not a list of frames, and nine
+   * five-digit numbers would push the supply line off the top of the card.
+   */
+  const faults =
+    dead <= 3
+      ? broken
+          .map((b) => `${b.id} ${BIKE_FAULT_LABEL[b.fault!].toLowerCase()}`)
+          .join(', ')
+      : confirmed.map((f) => phrase(f.count, BIKE_FAULT_LABEL[f.fault])).join(', ');
+
+  return (
+    <dl className="mt-2.5 flex flex-col gap-1.5 text-[10px] leading-snug">
+      <div className="flex gap-1.5">
+        <dt className="w-[52px] shrink-0 font-semibold text-[var(--color-ink)]">Bikes</dt>
+        <dd className="min-w-0 text-[var(--color-ink-2)]">{supply}</dd>
+      </div>
+      <div className="flex gap-1.5">
+        <dt className="w-[52px] shrink-0 font-semibold text-[var(--color-ink)]">Hardware</dt>
+        <dd className="min-w-0 text-[var(--color-ink-2)]">
+          {dead === 0 && unchecked === 0 ? (
+            'Nothing reported broken.'
+          ) : (
+            <>
+              {dead > 0 && (
+                <span>
+                  {dead} broken — {faults}.{' '}
+                </span>
+              )}
+              {unchecked > 0 && (
+                <span className="text-[var(--color-ink-3)]">
+                  {unchecked} more reported but not yet checked.
+                </span>
+              )}
+            </>
+          )}
+        </dd>
+      </div>
+    </dl>
+  );
+}
+
+/** The supply problem in one plain clause, with the instruction attached. */
+function supplyIssue(row: StationRow): string {
+  const a = row.action;
+  const state =
+    row.status === 'Empty'
+      ? 'No bikes left, so nobody can rent here'
+      : row.status === 'Full'
+        ? 'No open docks, so nobody can return here'
+        : row.status === 'Low'
+          ? 'Nearly out of bikes'
+          : row.status === 'Flooded'
+            ? 'Nearly out of docks'
+            : 'Stocked about right';
+
+  if (!a || a.kind === 'none') return `${state}.`;
+  if (a.kind === 'mechanic') return `${state}. A vehicle cannot fix this one.`;
+  return `${state}. ${a.kind === 'drop' ? 'Drop' : 'Collect'} ${a.bikes}.`;
+}
+
+/** "2 × bent wheel" reads as a spec sheet; "2 bent wheels" reads as a sentence. */
+function phrase(count: number, label: string): string {
+  const lower = label.toLowerCase();
+  return count === 1 ? lower : `${count} × ${lower}`;
 }
 
 function LiveReceipt({
@@ -936,10 +1095,10 @@ function LiveReceipt({
 /**
  * What the score means, derived from the score shown above it.
  *
- * This used to read `needsTruck`, which is not the same question. That flag is
+ * This used to read `needsVehicle`, which is not the same question. That flag is
  * false whenever a station is not reporting — however high it scores — so an
  * unverified station rendered "Urgency score 100 / 100" directly above "Below
- * the 55-point threshold. No truck needed yet." Two true statements about two
+ * the 55-point threshold. No vehicle needed yet." Two true statements about two
  * different values, sitting together as a flat contradiction.
  *
  * A station whose counts cannot be trusted has no verdict to give. Saying so
@@ -957,7 +1116,7 @@ function Verdict({ breakdown, score }: { breakdown: ScoreBreakdown; score: numbe
         <strong className="font-semibold">Excluded from scoring.</strong> This is what the station
         would score if its counts could be trusted — it has not reported in{' '}
         {formatReportedAge(breakdown.staleness.ageMinutes)}, so the arithmetic above runs on numbers
-        nobody can vouch for. It is shown for audit, not as a claim, and no truck will be sent on
+        nobody can vouch for. It is shown for audit, not as a claim, and no vehicle will be sent on
         it.
       </p>
     );
@@ -969,7 +1128,7 @@ function Verdict({ breakdown, score }: { breakdown: ScoreBreakdown; score: numbe
         className="mt-3 rounded-lg p-2.5 text-[10px] leading-relaxed"
         style={{ backgroundColor: TONE.empty.bg, color: TONE.empty.fg }}
       >
-        <strong className="font-semibold">A truck cannot fix this.</strong> The station is
+        <strong className="font-semibold">A vehicle cannot fix this.</strong> The station is
         mechanically out of service, so moving bikes changes nothing. It is routed to Maintenance
         Operations instead of the queue.
       </p>
@@ -996,13 +1155,13 @@ function Verdict({ breakdown, score }: { breakdown: ScoreBreakdown; score: numbe
  */
 function ScoreBand({ score, compact = false }: { score: number; compact?: boolean }) {
   const bands = [
-    { to: NEEDS_TRUCK_THRESHOLD, label: 'Drifting', tone: 'ok' as Tone },
+    { to: NEEDS_VEHICLE_THRESHOLD, label: 'Drifting', tone: 'ok' as Tone },
     { to: CRITICAL_THRESHOLD, label: 'Worth a trip', tone: 'warn' as Tone },
     { to: 100, label: 'Critical', tone: 'empty' as Tone },
   ];
 
   const current =
-    score >= CRITICAL_THRESHOLD ? 2 : score >= NEEDS_TRUCK_THRESHOLD ? 1 : 0;
+    score >= CRITICAL_THRESHOLD ? 2 : score >= NEEDS_VEHICLE_THRESHOLD ? 1 : 0;
   const here = bands[current]!;
 
   return (
@@ -1048,7 +1207,7 @@ function ScoreBand({ score, compact = false }: { score: number; compact?: boolea
       {!compact && (
         <div className="num mt-1.5 flex justify-between text-[9px] text-[var(--color-ink-3)]">
           <span>0</span>
-          <span>{NEEDS_TRUCK_THRESHOLD}</span>
+          <span>{NEEDS_VEHICLE_THRESHOLD}</span>
           <span>{CRITICAL_THRESHOLD}</span>
           <span>100</span>
         </div>

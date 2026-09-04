@@ -11,7 +11,7 @@ import {
   CAPACITY_WEIGHT_FLOOR,
   DEFAULT_P90_CAPACITY,
   HEALTHY_MAX_BASE,
-  NEEDS_TRUCK_THRESHOLD,
+  NEEDS_VEHICLE_THRESHOLD,
   STALENESS_MAX_PENALTY,
   scoreStation,
 } from './score';
@@ -64,7 +64,7 @@ describe('classification priority', () => {
     expect(r.category).toBe('not_installed');
     expect(r.scored).toBe(false);
     expect(r.score).toBe(0);
-    expect(r.needsTruck).toBe(false);
+    expect(r.needsVehicle).toBe(false);
   });
 
   it('ranks neither-renting-nor-returning as unusable', () => {
@@ -115,7 +115,7 @@ describe('boundary: exactly 0 bikes', () => {
     expect(r.base).toBe(BASE_EMPTY);
     expect(r.fill.ratio).toBe(0);
     expect(r.score).toBe(BASE_EMPTY); // capacity weight is exactly 1.0
-    expect(r.needsTruck).toBe(true);
+    expect(r.needsVehicle).toBe(true);
   });
 
   it('is Full at base 70 with exactly 0 open docks', () => {
@@ -126,7 +126,7 @@ describe('boundary: exactly 0 bikes', () => {
     expect(r.signal).toBe('full');
   });
 
-  it('gives empty and full opposite signals so the truck action differs', () => {
+  it('gives empty and full opposite signals so the vehicle action differs', () => {
     expect(score({}, { bikesAvailable: 0, docksAvailable: 20 }).signal).toBe('empty');
     expect(score({}, { bikesAvailable: 20, docksAvailable: 0 }).signal).toBe('full');
   });
@@ -139,7 +139,7 @@ describe('boundary: exactly 15% fill', () => {
     expect(r.fill.ratio).toBeCloseTo(0.15, 10);
     expect(r.category).toBe('starving');
     expect(r.base).toBe(BASE_STARVING);
-    expect(r.needsTruck).toBe(false); // 45 is below the 55 threshold
+    expect(r.needsVehicle).toBe(false); // 45 is below the 55 threshold
   });
 
   it('is Healthy just above 15% fill', () => {
@@ -255,15 +255,15 @@ describe('boundary: staleness at 14 / 16 / 61 minutes', () => {
     expect(r.staleness.notReporting).toBe(false);
   });
 
-  it('marks not-reporting past 60 minutes and drops it from the truck count', () => {
+  it('marks not-reporting past 60 minutes and drops it from the vehicle count', () => {
     const r = score({}, { ...empty, lastReportedMs: NOW - 61 * MINUTE });
     expect(r.staleness.ageMinutes).toBe(61);
     expect(r.staleness.penalty).toBe(STALENESS_MAX_PENALTY);
     expect(r.staleness.notReporting).toBe(true);
     expect(r.staleness.reason).toBe('stale');
-    // Still scored and shown, but never counted as needing a truck.
-    expect(r.score).toBeGreaterThan(NEEDS_TRUCK_THRESHOLD);
-    expect(r.needsTruck).toBe(false);
+    // Still scored and shown, but never counted as needing a vehicle.
+    expect(r.score).toBeGreaterThan(NEEDS_VEHICLE_THRESHOLD);
+    expect(r.needsVehicle).toBe(false);
   });
 
   it('ramps linearly between the grace window and the cutoff', () => {
@@ -277,7 +277,7 @@ describe('boundary: staleness at 14 / 16 / 61 minutes', () => {
     expect(r.staleness.penalty).toBe(STALENESS_MAX_PENALTY);
     expect(r.staleness.notReporting).toBe(true);
     expect(r.staleness.reason).toBe('never-reported');
-    expect(r.needsTruck).toBe(false);
+    expect(r.needsVehicle).toBe(false);
   });
 
   it('treats clock skew from the future as just-now, never negative', () => {
@@ -287,20 +287,20 @@ describe('boundary: staleness at 14 / 16 / 61 minutes', () => {
   });
 });
 
-describe('needs-a-truck threshold', () => {
+describe('needs-a-vehicle threshold', () => {
   it('is inclusive at exactly the threshold', () => {
     // Tune capacity so the final score lands exactly on 55.
-    const target = NEEDS_TRUCK_THRESHOLD / BASE_EMPTY; // required weight
+    const target = NEEDS_VEHICLE_THRESHOLD / BASE_EMPTY; // required weight
     const capacity = ((target - CAPACITY_WEIGHT_FLOOR) / 0.5) * DEFAULT_P90_CAPACITY;
     const r = score({ capacity: Math.round(capacity) }, { bikesAvailable: 0, docksAvailable: 20 });
-    expect(r.score).toBe(NEEDS_TRUCK_THRESHOLD);
-    expect(r.needsTruck).toBe(true);
+    expect(r.score).toBe(NEEDS_VEHICLE_THRESHOLD);
+    expect(r.needsVehicle).toBe(true);
   });
 
   it('excludes a station one point below', () => {
     const r = score({ capacity: 12 }, { bikesAvailable: 2, docksAvailable: 18 });
-    expect(r.score).toBeLessThan(NEEDS_TRUCK_THRESHOLD);
-    expect(r.needsTruck).toBe(false);
+    expect(r.score).toBeLessThan(NEEDS_VEHICLE_THRESHOLD);
+    expect(r.needsVehicle).toBe(false);
   });
 });
 

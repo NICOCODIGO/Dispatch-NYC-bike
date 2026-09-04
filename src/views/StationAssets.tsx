@@ -7,6 +7,7 @@ import {
   BIKE_FAULT_LABEL,
   CONDITION_LABEL,
   DOCK_FAULT_LABEL,
+  FAULT_SOURCE_LABEL,
   LOW_CHARGE,
   bikesAt,
   docksAt,
@@ -16,6 +17,7 @@ import {
   type Bike,
   type Dock,
 } from '../sim/fleet';
+import { applyTriage } from '../model/pickup';
 import { useConsole } from '../state/useConsole';
 import type { WorkOrderType } from '../model/workOrder';
 import type { StationRow } from '../data/stationRow';
@@ -54,7 +56,14 @@ export function StationAssets({
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const status = useMemo(() => statusFromRow(row), [row]);
-  const bikes = useMemo(() => (status ? bikesAt(status, Date.now()) : []), [status]);
+  // The rack the feed implies, then the checks a mechanic has logged on top. A
+  // cleared bike reads as working everywhere below, including in the fleet
+  // summary — which is the point of releasing the dock.
+  const triage = useConsole((s) => s.triage);
+  const bikes = useMemo(
+    () => (status ? applyTriage(bikesAt(status, Date.now()), triage) : []),
+    [status, triage],
+  );
   const docks = useMemo(() => (status ? docksAt(status) : []), [status]);
   const fleet = useMemo(() => summarize(bikes, row.id), [bikes, row.id]);
   const dockStats = useMemo(() => summarizeDocks(docks), [docks]);
@@ -241,14 +250,23 @@ function BikeRow({
             style={{
               color: bike.condition === 'out-of-service' ? TONE.empty.fg : TONE.warn.fg,
             }}
-            title={BIKE_FAULT_LABEL[bike.fault]}
+            title={`${BIKE_FAULT_LABEL[bike.fault]}${bike.source ? ` — ${FAULT_SOURCE_LABEL[bike.source]}` : ''}`}
           >
             {BIKE_FAULT_LABEL[bike.fault]}
+            {/* Who raised it, not just what. A rider report and a telemetry
+                fault get the same red dock and deserve very different levels
+                of belief, and only one of them can be a false alarm. */}
+            {bike.source && (
+              <span className="ml-1 text-[var(--color-ink-3)]">
+                · {FAULT_SOURCE_LABEL[bike.source].toLowerCase()}
+              </span>
+            )}
           </span>
         )}
       </span>
 
       <span className="flex items-center gap-1.5 justify-self-end whitespace-nowrap">
+        {bike.condition === 'flagged' && <Triage bike={bike} row={row} />}
         {bike.condition === 'out-of-service' && <StatusPill label="Out" />}
         {bike.fault !== null && (
           <RaiseOrder
@@ -262,6 +280,49 @@ function BikeRow({
         )}
       </span>
     </li>
+  );
+}
+
+/**
+ * The two ways a mechanic ends a red dock.
+ *
+ * Shown only on `flagged` bikes — the ones a report has locked but nobody has
+ * checked. A confirmed fault already has its verdict, and a working bike was
+ * never in question.
+ *
+ * "No fault" is offered with equal weight to "Confirm", deliberately. It is the
+ * more common outcome in the field and the one a maintenance system usually
+ * cannot express, which is how a backlog of false alarms comes to look
+ * identical to a network falling apart.
+ */
+function Triage({ bike, row }: { bike: Bike; row: StationRow }) {
+  const triageBike = useConsole((s) => s.triageBike);
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          triageBike(bike.id, row.name, 'no-fault');
+        }}
+        title={`Checked ${bike.id} and found nothing wrong — release the dock`}
+        className="cursor-pointer rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-ok)] hover:text-[var(--color-ok)]"
+      >
+        No fault
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          triageBike(bike.id, row.name, 'confirmed');
+        }}
+        title={`Confirm the fault on ${bike.id} — it stays locked and joins the collection list`}
+        className="cursor-pointer rounded border border-[var(--color-line)] px-1.5 py-0.5 text-[9.5px] font-medium text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-empty)] hover:text-[var(--color-empty)]"
+      >
+        Confirm
+      </button>
+    </span>
   );
 }
 

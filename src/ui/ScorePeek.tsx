@@ -50,7 +50,7 @@ export function ScorePeek({
   // number than the row beneath it.
   const adjusted = applyDuration(breakdown, duration ?? undefined);
   const durationPts = duration?.confident ? duration.points : 0;
-  const score = lane === 'unverified' || !breakdown.needsTruck ? breakdown.score : adjusted.score;
+  const score = lane === 'unverified' || !breakdown.needsVehicle ? breakdown.score : adjusted.score;
   const verdict = verdictFor(breakdown, score);
 
   const badge = <ScoreBadge score={lane === 'unverified' ? null : score} size={size} />;

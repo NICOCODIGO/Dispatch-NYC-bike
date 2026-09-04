@@ -94,7 +94,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="alert-triangle"
           tone="empty"
-          headline={`${s.name} has scored critical for ${elapsed(s.minutes)} — no truck sent.`}
+          headline={`${s.name} has scored critical for ${elapsed(s.minutes)} — no vehicle sent.`}
           detail={
             <>
               {SIGNAL_WORD[s.signal] ?? 'failing'} {since(s.failingSince)}
@@ -128,7 +128,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
             <>
               {s.sites} station{s.sites === 1 ? ' has' : 's have'} most of the rack out of service
               {s.brokenBikes > 0 && <>, and {num(s.brokenBikes)} bikes are disabled on top</>}. None
-              of it is a truck job — moving bikes cannot re-seat a dock.{' '}
+              of it is a vehicle job — moving bikes cannot re-seat a dock.{' '}
               <Action to="/maintenance/hardware" color={TONE.empty.fg}>
                 Open Hardware →
               </Action>
@@ -155,7 +155,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
           detail={
             <>
               Worst is {s.worstName} ({s.worstBorough}) — {s.worstFault}, confirmed on the latest
-              feed. A dead station is a hole the size of its dock count, and no truck closes it.{' '}
+              feed. A dead station is a hole the size of its dock count, and no vehicle closes it.{' '}
               <Action to="/maintenance/orders" color={TONE.warn.fg}>
                 Send a mechanic →
               </Action>
@@ -173,7 +173,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         s.dominant && s.dominant.share >= 0.6
           ? `, mostly ${s.dominant.signal === 'full' ? 'full' : 'empty'}-side`
           : '';
-      const stats: Stat[] = [{ label: 'need a truck', value: num(s.needsTruck), tone: 'warn' }];
+      const stats: Stat[] = [{ label: 'need a vehicle', value: num(s.needsVehicle), tone: 'warn' }];
       if (s.dominant) {
         stats.push({
           label: `${s.dominant.signal === 'full' ? 'full' : 'empty'}-side`,
@@ -188,7 +188,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
           headline={`Worst right now: ${s.name}, score ${s.score}.`}
           detail={
             <>
-              {num(s.needsTruck)} stations need a truck{side}. This is the day job — the ranked board
+              {num(s.needsVehicle)} stations need a vehicle{side}. This is the day job — the ranked board
               is below.
               {(s.mechanic > 0 || s.crippled > 0) && (
                 <>
@@ -215,7 +215,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="list-ordered"
           tone="ok"
-          headline="Nothing needs a truck right now."
+          headline="Nothing needs a vehicle right now."
           detail={
             <>
               {s.networkFill === null

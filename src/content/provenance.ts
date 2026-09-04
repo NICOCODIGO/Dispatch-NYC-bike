@@ -21,7 +21,7 @@ import type { Tone } from '../ui/tone';
  * twelve available and two disabled. The identities are fiction; the number is
  * not, and the fiction cannot contradict it.
  *
- * A **fixture** is invented with nothing behind it. The trucks, the roster and
+ * A **fixture** is invented with nothing behind it. The vehicles, the roster and
  * the seed work orders are anchored to no feed value at all — GBFS carries no
  * vehicles and no people, so there is nothing to anchor to. That is a weaker
  * claim and it should look like one.
@@ -176,7 +176,7 @@ export const PROVENANCE_GROUPS: ProvenanceGroup[] = [
     note: 'None of this is in any public feed. Anchored to nothing.',
     fields: [
       {
-        label: 'Trucks — positions, load, capacity, state',
+        label: 'Vehicles — positions, load, capacity, state',
         source: 'fixture',
         detail:
           'GBFS has no vehicles. Coordinates are real points so travel estimates are arithmetic rather than invented numbers wearing a precise costume, but the vehicles themselves are made up.',

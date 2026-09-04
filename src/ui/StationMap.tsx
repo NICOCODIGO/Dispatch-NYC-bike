@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import type { ScoredStation } from '../model/summary';
 import { laneOf } from '../model/triage';
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 
 /**
  * The network on real geography.
@@ -72,7 +72,7 @@ function toFeature(s: ScoredStation, tones: Record<string, string>) {
       ? tones.mute
       : score >= CRITICAL_THRESHOLD
         ? tones.empty
-        : score >= NEEDS_TRUCK_THRESHOLD
+        : score >= NEEDS_VEHICLE_THRESHOLD
           ? tones.warn
           : tones.ok;
 
@@ -104,14 +104,14 @@ export default function StationMap({
   layer,
   onSelect,
   focusId,
-  needsTruckOnly,
+  needsVehicleOnly,
 }: {
   scored: ScoredStation[];
   layer: MapLayer;
   onSelect: (stationId: string) => void;
   /** Station to fly to when it changes — deep links from other screens. */
   focusId?: string | null;
-  needsTruckOnly: boolean;
+  needsVehicleOnly: boolean;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -243,9 +243,9 @@ export default function StationMap({
     if (!ready || !map.current) return;
     map.current.setFilter(
       LAYER,
-      needsTruckOnly ? ['>=', ['get', 'score'], NEEDS_TRUCK_THRESHOLD] : null,
+      needsVehicleOnly ? ['>=', ['get', 'score'], NEEDS_VEHICLE_THRESHOLD] : null,
     );
-  }, [needsTruckOnly, ready]);
+  }, [needsVehicleOnly, ready]);
 
   /* -- fly to a deep-linked station --------------------------------------- */
   useEffect(() => {

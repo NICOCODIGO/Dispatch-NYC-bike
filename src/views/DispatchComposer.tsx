@@ -6,11 +6,13 @@ import { useConsole } from '../state/useConsole';
 import type { StationRow } from '../data/stationRow';
 import {
   composeDispatch,
+  inspectLineFor,
   instructionFor,
   mailtoFor,
+  pickupLineFor,
   smsFor,
 } from '../content/dispatchMessage';
-import { TRUCKS, TRUCK_STATE_LABEL, type Truck } from '../mock/data';
+import { VEHICLES, VEHICLE_STATE_LABEL, type Vehicle } from '../mock/data';
 import { DEFAULT_ETA_MINUTES, snapshotOf } from '../data/dispatchRun';
 
 /**
@@ -21,7 +23,7 @@ import { DEFAULT_ETA_MINUTES, snapshotOf } from '../data/dispatchRun';
  * step: pick a vehicle, read the instruction it generates, send it by whatever
  * channel actually exists, and have the board remember you did.
  *
- * No fleet backend is involved and none is pretended. The trucks are fixtures;
+ * No fleet backend is involved and none is pretended. The vehicles are fixtures;
  * what is real is the instruction text, which is composed from live feed
  * values, and the record that a person decided something at a given time.
  */
@@ -37,44 +39,44 @@ const AVAILABILITY: Record<AvailabilityKey, string> = {
 /**
  * What picking this vehicle costs.
  *
- * The dropdown says a truck is busy; this says what happens to the job it is
- * already doing. Choosing an En Route truck is not a scheduling inconvenience,
+ * The dropdown says a vehicle is busy; this says what happens to the job it is
+ * already doing. Choosing an En Route vehicle is not a scheduling inconvenience,
  * it is a decision to abandon another station, and that should be on screen at
  * the moment of the decision rather than discovered afterwards.
  */
 function Cost({
-  truck,
+  vehicle,
   existing,
   row,
 }: {
-  truck?: Truck;
+  vehicle?: Vehicle;
   existing?: { stationName: string };
   row: StationRow;
 }) {
-  if (!truck) return null;
+  if (!vehicle) return null;
 
   if (existing) {
     return (
       <p className="mt-1.5 text-[10px] leading-snug" style={{ color: TONE.empty.fg }}>
-        Truck {truck.id} is already on {existing.stationName}. Sending it here abandons that job —
+        Vehicle {vehicle.id} is already on {existing.stationName}. Sending it here abandons that job —
         that station returns to the queue unserved.
       </p>
     );
   }
 
-  if (truck.state === 'loading') {
+  if (vehicle.state === 'loading') {
     return (
       <p className="mt-1.5 text-[10px] leading-snug" style={{ color: TONE.warn.fg }}>
-        Loading at {truck.depot}
-        {truck.when ? ` — ${truck.when}` : ''}. It can take this job, but not immediately.
+        Loading at {vehicle.depot}
+        {vehicle.when ? ` — ${vehicle.when}` : ''}. It can take this job, but not immediately.
       </p>
     );
   }
 
-  if (truck.state !== 'idle') {
+  if (vehicle.state !== 'idle') {
     return (
       <p className="mt-1.5 text-[10px] leading-snug" style={{ color: TONE.warn.fg }}>
-        Truck {truck.id} is {TRUCK_STATE_LABEL[truck.state].toLowerCase()} at {truck.where}. Adding{' '}
+        Vehicle {vehicle.id} is {VEHICLE_STATE_LABEL[vehicle.state].toLowerCase()} at {vehicle.where}. Adding{' '}
         {row.name} delays whatever it reaches next by roughly a full run.
       </p>
     );
@@ -82,7 +84,7 @@ function Cost({
 
   return (
     <p className="mt-1.5 text-[10px] text-[var(--color-ink-3)]">
-      Idle at {truck.depot} — free to leave now.
+      Idle at {vehicle.depot} — free to leave now.
     </p>
   );
 }
@@ -95,33 +97,36 @@ export function DispatchComposer({
   onClose: () => void;
 }) {
   const assignments = useConsole((s) => s.assignments);
-  const dispatchTruck = useConsole((s) => s.dispatchTruck);
+  const dispatchVehicle = useConsole((s) => s.dispatchVehicle);
 
   /**
-   * Grouped by what choosing this truck actually costs you.
+   * Grouped by what choosing this vehicle actually costs you.
    *
    * A flat list implies every vehicle is equally available, which is the one
-   * thing a dispatcher most needs to be untrue — taking an En Route truck does
+   * thing a dispatcher most needs to be untrue — taking an En Route vehicle does
    * not just delay this job, it abandons another one.
    */
   const groups = useMemo(() => {
-    const bucket = (t: Truck): AvailabilityKey => {
+    const bucket = (t: Vehicle): AvailabilityKey => {
       if (assignments[t.id]?.stationId === row.id) return 'here';
       if (assignments[t.id]) return 'retask';
       if (t.state === 'idle') return 'now';
       if (t.state === 'loading') return 'soon';
       return 'retask';
     };
-    const out: Record<AvailabilityKey, Truck[]> = { now: [], soon: [], retask: [], here: [] };
-    for (const t of TRUCKS) out[bucket(t)].push(t);
+    const out: Record<AvailabilityKey, Vehicle[]> = { now: [], soon: [], retask: [], here: [] };
+    for (const t of VEHICLES) out[bucket(t)].push(t);
     return out;
   }, [assignments, row.id]);
 
-  const [truckId, setTruckId] = useState(
-    () => (groups.now[0] ?? groups.soon[0] ?? TRUCKS[0])!.id,
+  const [vehicleId, setVehicleId] = useState(
+    () => (groups.now[0] ?? groups.soon[0] ?? VEHICLES[0])!.id,
   );
   const [copied, setCopied] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const pickupLine = pickupLineFor(row);
+  const inspectLine = inspectLineFor(row);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const at = new Date().toLocaleTimeString('en-US', {
@@ -129,8 +134,8 @@ export function DispatchComposer({
     minute: '2-digit',
     hour12: false,
   });
-  const message = composeDispatch(row, truckId, at);
-  const existing = assignments[truckId];
+  const message = composeDispatch(row, vehicleId, at);
+  const existing = assignments[vehicleId];
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -177,10 +182,10 @@ export function DispatchComposer({
   };
 
   const confirm = () => {
-    const truck = TRUCKS.find((t) => t.id === truckId);
-    dispatchTruck({
-      truckId,
-      depot: truck?.depot ?? 'Unknown',
+    const vehicle = VEHICLES.find((t) => t.id === vehicleId);
+    dispatchVehicle({
+      vehicleId,
+      depot: vehicle?.depot ?? 'Unknown',
       stationId: row.id,
       stationName: row.name,
       borough: row.borough,
@@ -208,7 +213,7 @@ export function DispatchComposer({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Dispatch a truck to ${row.name}`}
+        aria-label={`Dispatch a vehicle to ${row.name}`}
         className="fade-in relative w-[440px] max-w-full overflow-hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] shadow-[0_16px_48px_rgb(43_38_33/22%)]"
       >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
@@ -218,7 +223,7 @@ export function DispatchComposer({
               tabIndex={-1}
               className="text-[13px] font-semibold text-[var(--color-ink)] outline-none"
             >
-              Dispatch a truck
+              Dispatch a vehicle
             </h2>
             <p className="mt-0.5 text-[11px] text-[var(--color-ink-2)]">
               Composes the instruction, records who decided, and marks the row.
@@ -257,11 +262,30 @@ export function DispatchComposer({
             </span>
           </div>
 
+          {/* The collection half of the stop. Sits under the instruction rather
+              than inside that pill because it is a second errand with a
+              different destination — the rack, then the warehouse — and because
+              the pill is the thing the driver reads first. */}
+          {pickupLine && (
+            <p
+              className="mt-2 flex items-start gap-1.5 text-[11px] leading-snug"
+              style={{ color: row.pickup?.urgency === 'immediate' ? TONE.warn.fg : 'var(--color-ink-2)' }}
+            >
+              <Icon name="wrench" size={11} className="mt-px shrink-0" />
+              <span>
+                {pickupLine}
+                {inspectLine && (
+                  <span className="block text-[var(--color-ink-3)]">{inspectLine}</span>
+                )}
+              </span>
+            </p>
+          )}
+
           <label className="mt-4 block">
             <span className="eyebrow text-[10px]">Assign to</span>
             <select
-              value={truckId}
-              onChange={(e) => setTruckId(e.target.value)}
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
               className="mt-1.5 w-full cursor-pointer rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 py-2 text-[12px] text-[var(--color-ink)]"
             >
               {(Object.keys(AVAILABILITY) as AvailabilityKey[]).map((k) =>
@@ -269,7 +293,7 @@ export function DispatchComposer({
                   <optgroup key={k} label={AVAILABILITY[k]}>
                     {groups[k].map((t) => (
                       <option key={t.id} value={t.id}>
-                        Truck {t.id} · {TRUCK_STATE_LABEL[t.state]} · {t.depot}
+                        Vehicle {t.id} · {VEHICLE_STATE_LABEL[t.state]} · {t.depot}
                         {assignments[t.id] ? ` — on ${assignments[t.id]!.stationName}` : ''}
                       </option>
                     ))}
@@ -279,7 +303,7 @@ export function DispatchComposer({
             </select>
           </label>
 
-          <Cost truck={TRUCKS.find((t) => t.id === truckId)} existing={existing} row={row} />
+          <Cost vehicle={VEHICLES.find((t) => t.id === vehicleId)} existing={existing} row={row} />
 
           <div className="mt-3.5">
             <span className="eyebrow text-[10px]">Message</span>
@@ -321,7 +345,7 @@ export function DispatchComposer({
             <Button size="sm" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button size="sm" variant="dark" icon="truck" onClick={confirm}>
+            <Button size="sm" variant="dark" icon="vehicle" onClick={confirm}>
               Send &amp; mark dispatched
             </Button>
           </span>

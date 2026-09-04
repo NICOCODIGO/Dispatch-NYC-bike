@@ -1,19 +1,98 @@
 import { describe, expect, it } from 'vitest';
-import { NEEDS_TRUCK_THRESHOLD } from './score';
+import { NEEDS_VEHICLE_THRESHOLD } from './score';
 import type { SnapshotRow } from '../data/snapshots';
 import {
   OUTCOME_DEFINITIONS,
   OUTCOME_DELTA_TOLERANCE,
+  RECOVERY_HEALTHY,
+  RECOVERY_WEAK,
+  type Outcome,
   buildTracks,
   classifyOutcome,
   countOutcomes,
+  recoveryBand,
+  recoveryRate,
 } from './verify';
 
-const T = NEEDS_TRUCK_THRESHOLD;
+const T = NEEDS_VEHICLE_THRESHOLD;
 const TOL = OUTCOME_DELTA_TOLERANCE;
 
+const counts = (
+  resolved: number,
+  failing: number,
+  worsened: number,
+): Record<Outcome, number> => ({
+  resolved,
+  'still-failing': failing,
+  worsened,
+});
+
+describe('recoveryRate', () => {
+  it('is the resolved share of everything flagged', () => {
+    expect(recoveryRate(counts(3, 5, 2))).toBe(0.3);
+  });
+
+  it('counts worsened stations in the denominator', () => {
+    // A station that got worse is still a station we flagged. Leaving it out
+    // would make the rate climb as the network deteriorated.
+    expect(recoveryRate(counts(1, 0, 1))).toBe(0.5);
+  });
+
+  it('is null rather than zero when nothing has been flagged', () => {
+    // A fresh session has no evidence either way. 0% would read as total
+    // failure at the exact moment the board knows nothing.
+    expect(recoveryRate(counts(0, 0, 0))).toBeNull();
+  });
+
+  it('is 1 when everything flagged came back', () => {
+    expect(recoveryRate(counts(4, 0, 0))).toBe(1);
+  });
+
+  it('is 0 when nothing flagged came back', () => {
+    expect(recoveryRate(counts(0, 6, 1))).toBe(0);
+  });
+});
+
+describe('recoveryBand', () => {
+  it('reports unknown for no evidence', () => {
+    expect(recoveryBand(null)).toBe('unknown');
+  });
+
+  it('is inclusive at the healthy line', () => {
+    expect(recoveryBand(RECOVERY_HEALTHY)).toBe('healthy');
+  });
+
+  it('is inclusive at the weak line', () => {
+    expect(recoveryBand(RECOVERY_WEAK)).toBe('weak');
+  });
+
+  it('drops to poor just below the weak line', () => {
+    expect(recoveryBand(RECOVERY_WEAK - 0.001)).toBe('poor');
+  });
+
+  it('drops to weak just below the healthy line', () => {
+    expect(recoveryBand(RECOVERY_HEALTHY - 0.001)).toBe('weak');
+  });
+
+  it('covers the whole 0–1 range without a gap', () => {
+    for (let i = 0; i <= 100; i++) {
+      expect(recoveryBand(i / 100)).not.toBe('unknown');
+    }
+  });
+
+  it('never improves as the share falls', () => {
+    const rank = { poor: 0, weak: 1, healthy: 2, unknown: -1 };
+    let last = -1;
+    for (let i = 0; i <= 100; i++) {
+      const r = rank[recoveryBand(i / 100)];
+      expect(r).toBeGreaterThanOrEqual(last);
+      last = r;
+    }
+  });
+});
+
 describe('outcome classification', () => {
-  describe('boundary: the truck threshold', () => {
+  describe('boundary: the vehicle threshold', () => {
     it('is resolved one point below the threshold', () => {
       expect(classifyOutcome(90, T - 1)).toBe('resolved');
     });
@@ -88,7 +167,7 @@ function row(over: Partial<SnapshotRow> & { t: number; score: number }): Snapsho
     borough: 'Manhattan',
     category: 'empty',
     signal: 'empty',
-    needsTruck: over.score >= T,
+    needsVehicle: over.score >= T,
     bikes: 0,
     docks: 20,
     ...over,

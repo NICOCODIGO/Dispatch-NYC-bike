@@ -129,7 +129,7 @@ describe('shift capacity', () => {
     person({ id: 's1', role: 'swap-tech', shift: 'pm' }),
   ];
 
-  const base = { relocatable: 1000, truckCapacity: 100, date: at(9) };
+  const base = { relocatable: 1000, vehicleCapacity: 100, date: at(9) };
 
   it('splits the roster into on and off shift', () => {
     const cap = shiftCapacity(roster, [], base);
@@ -151,18 +151,18 @@ describe('shift capacity', () => {
   });
 
   it('derives runs needed from demand over fleet capacity', () => {
-    const cap = shiftCapacity(roster, [], { ...base, relocatable: 1000, truckCapacity: 100 });
+    const cap = shiftCapacity(roster, [], { ...base, relocatable: 1000, vehicleCapacity: 100 });
     expect(cap.runsNeeded).toBe(10);
     expect(cap.shortfall).toBe(cap.runsAvailable - 10);
   });
 
-  // "No trucks" and "no work" are opposite situations that would divide to the
+  // "No vehicles" and "no work" are opposite situations that would divide to the
   // same number, so the no-fleet case must not report zero.
   it('reports null rather than zero when the fleet has no capacity', () => {
-    const cap = shiftCapacity(roster, [], { ...base, truckCapacity: 0 });
+    const cap = shiftCapacity(roster, [], { ...base, vehicleCapacity: 0 });
     expect(cap.runsNeeded).toBeNull();
     expect(cap.shortfall).toBeNull();
-    expect(verdict(cap)).toMatch(/no active truck capacity/i);
+    expect(verdict(cap)).toMatch(/no active vehicle capacity/i);
   });
 
   it('counts orders no role on shift can take', () => {
@@ -187,7 +187,7 @@ describe('verdict', () => {
   it('says the backlog is clearable when it is', () => {
     const cap = shiftCapacity(drivers(4), [], {
       relocatable: 100,
-      truckCapacity: 100,
+      vehicleCapacity: 100,
       date: at(9),
     });
     expect(cap.shortfall).toBeGreaterThanOrEqual(0);
@@ -197,7 +197,7 @@ describe('verdict', () => {
   it('names the shortfall and what carries over when it is not', () => {
     const cap = shiftCapacity(drivers(1), [], {
       relocatable: 5000,
-      truckCapacity: 100,
+      vehicleCapacity: 100,
       date: at(9),
     });
     expect(cap.shortfall).toBeLessThan(0);
@@ -208,7 +208,7 @@ describe('verdict', () => {
   it('calls out an empty rota rather than reporting a shortfall', () => {
     const cap = shiftCapacity(drivers(2, 'pm'), [], {
       relocatable: 1000,
-      truckCapacity: 100,
+      vehicleCapacity: 100,
       date: at(9),
     });
     expect(cap.drivers).toBe(0);

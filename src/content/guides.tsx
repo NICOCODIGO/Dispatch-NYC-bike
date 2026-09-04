@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
 
 /**
  * The mental model for a screen — one step above the subtitle.
@@ -12,16 +11,11 @@ import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
  * just the "so what am I looking at" a new dispatcher needs once.
  */
 export const GUIDES: Record<string, ReactNode> = {
-  rebalancing: (
-    <>
-      Every station gets a 0–100 urgency score from how far it has drifted off
-      half-full — weighted up for the bigger stations, and for how long it has
-      been stuck. At {NEEDS_TRUCK_THRESHOLD} it needs a truck; at{' '}
-      {CRITICAL_THRESHOLD} it jumps the line. This board is that list, worst
-      first. Stations with a broken dock, or that have gone quiet, are scored
-      differently and live on their own screens — a truck cannot help them.
-    </>
-  ),
+  // `rebalancing` used to live here. Its screen now says the same thing in its
+  // own masthead, shorter and in plain words, because a page that needs a
+  // dismissible box to explain the paragraph directly above it has two
+  // introductions and no clear one. The full derivation was always a click away
+  // in the method sheet, which is the right home for the detail this carried.
   analytics: (
     <>
       This is the one screen that asks whether any of the dispatching is

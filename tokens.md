@@ -36,10 +36,10 @@ still draws every non-text mark, and `--amber-ink` (**4.65:1**) draws amber text
 Same signal, legible at 13px, and Lighthouse accessibility stays at 100.
 
 Empty is red and full is indigo deliberately — they are not two grades of one problem.
-They need opposite truck actions (drop bikes off vs. pick bikes up), and a dispatcher
+They need opposite vehicle actions (drop bikes off vs. pick bikes up), and a dispatcher
 should be able to read which is which from across the room without reading a word.
 Outages are ink-black because a broken station is a mechanical failure, not a point on a
-supply gradient — no amount of driving a truck there fixes a dead dock.
+supply gradient — no amount of driving a vehicle there fixes a dead dock.
 
 Green is disciplined to the point of near-absence. If "fine" were colored, the eye would
 have to filter it out to find the failures; instead, healthy stations are quiet grey text

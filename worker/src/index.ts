@@ -44,11 +44,11 @@ async function snapshot(env: Env): Promise<void> {
   // Only persist stations that are actually failing. Storing all ~2,400 every
   // five minutes would be 690k rows a day to answer questions about the 600
   // that matter.
-  const flagged = scored.filter((s) => s.breakdown.needsTruck || s.breakdown.score >= 40);
+  const flagged = scored.filter((s) => s.breakdown.needsVehicle || s.breakdown.score >= 40);
 
   const insertSnapshot = env.DB.prepare(
     `INSERT OR REPLACE INTO snapshot
-       (station_id, t, score, category, signal, bikes, docks, needs_truck)
+       (station_id, t, score, category, signal, bikes, docks, needs_vehicle)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
@@ -72,7 +72,7 @@ async function snapshot(env: Env): Promise<void> {
         breakdown.signal,
         breakdown.fill.bikes,
         breakdown.fill.docks,
-        breakdown.needsTruck ? 1 : 0,
+        breakdown.needsVehicle ? 1 : 0,
       ),
     ),
     ...flagged.map(({ station }) =>

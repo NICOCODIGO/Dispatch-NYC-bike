@@ -38,7 +38,7 @@ export interface SnapshotRow {
   score: number;
   category: StationCategory;
   signal: Signal;
-  needsTruck: boolean;
+  needsVehicle: boolean;
   /** Counts at this reading, so Verify can show what the score was made of.
    *  Optional because rows written before this field existed remain readable. */
   bikes?: number;

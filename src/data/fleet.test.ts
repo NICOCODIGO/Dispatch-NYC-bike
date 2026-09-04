@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Truck } from '../mock/data';
+import type { Vehicle } from '../mock/data';
 import type { ScoredStation } from '../model/summary';
 import {
   FREE_SHORTLY_MINUTES,
@@ -11,7 +11,7 @@ import {
   travelMinutes,
 } from './fleet';
 
-function truck(over: Partial<Truck> = {}): Truck {
+function vehicle(over: Partial<Vehicle> = {}): Vehicle {
   return {
     id: '#1',
     depot: 'E 18 St',
@@ -42,7 +42,7 @@ function station(
   return {
     station: { stationId: id, name: `Station ${id}`, lat, lon, capacity: usableSlots },
     breakdown: {
-      needsTruck: true,
+      needsVehicle: true,
       score,
       signal: dir === 'drop' ? 'empty' : 'full',
       fill: { bikes: dir === 'drop' ? target - bikes : target + bikes, usableSlots },
@@ -64,30 +64,30 @@ describe('availabilityOf', () => {
 
 describe('bestMatch — direction is a hard constraint', () => {
   /**
-   * The failure this guards. An empty truck offered a "drop 30 bikes" job sends
+   * The failure this guards. An empty vehicle offered a "drop 30 bikes" job sends
    * somebody across the city to deliver nothing.
    */
-  it('never offers an empty truck a drop job', () => {
+  it('never offers an empty vehicle a drop job', () => {
     const jobs = openJobs([station('a', 'drop', 30, 90)], new Set());
-    expect(bestMatch(truck({ load: 0 }), jobs)).toBeNull();
+    expect(bestMatch(vehicle({ load: 0 }), jobs)).toBeNull();
   });
 
-  it('never offers a full truck a collect job', () => {
+  it('never offers a full vehicle a collect job', () => {
     const jobs = openJobs([station('a', 'collect', 30, 90)], new Set());
-    expect(bestMatch(truck({ load: 48, capacity: 48 }), jobs)).toBeNull();
+    expect(bestMatch(vehicle({ load: 48, capacity: 48 }), jobs)).toBeNull();
   });
 
-  it('offers a loaded truck the drop job', () => {
+  it('offers a loaded vehicle the drop job', () => {
     const jobs = openJobs([station('a', 'drop', 30, 90)], new Set());
-    const m = bestMatch(truck({ load: 26 }), jobs);
+    const m = bestMatch(vehicle({ load: 26 }), jobs);
     expect(m?.job.action.kind).toBe('drop');
     expect(m?.servable).toBe(26);
     expect(m?.complete).toBe(false);
   });
 
-  it('marks a job complete when the truck can finish it in one visit', () => {
+  it('marks a job complete when the vehicle can finish it in one visit', () => {
     const jobs = openJobs([station('a', 'drop', 20, 90)], new Set());
-    const m = bestMatch(truck({ load: 26 }), jobs);
+    const m = bestMatch(vehicle({ load: 26 }), jobs);
     expect(m?.complete).toBe(true);
     expect(m?.servable).toBe(20);
   });
@@ -99,7 +99,7 @@ describe('bestMatch — ranking', () => {
       [station('near-mild', 'collect', 10, 60), station('near-bad', 'collect', 10, 88)],
       new Set(),
     );
-    expect(bestMatch(truck(), jobs)?.job.station.station.stationId).toBe('near-bad');
+    expect(bestMatch(vehicle(), jobs)?.job.station.station.stationId).toBe('near-bad');
   });
 
   it('prefers the nearer station when urgency is equal', () => {
@@ -110,7 +110,7 @@ describe('bestMatch — ranking', () => {
       ],
       new Set(),
     );
-    expect(bestMatch(truck(), jobs)?.job.station.station.stationId).toBe('near');
+    expect(bestMatch(vehicle(), jobs)?.job.station.station.stationId).toBe('near');
   });
 });
 
@@ -128,20 +128,20 @@ describe('groupFleet', () => {
     station('c', 'collect', 10, 86),
   ];
 
-  it('buckets trucks by when they can take work', () => {
+  it('buckets vehicles by when they can take work', () => {
     const g = groupFleet(
-      [truck({ id: '#1', freeInMin: 0 }), truck({ id: '#2', freeInMin: 5 }), truck({ id: '#3', freeInMin: 90 })],
+      [vehicle({ id: '#1', freeInMin: 0 }), vehicle({ id: '#2', freeInMin: 5 }), vehicle({ id: '#3', freeInMin: 90 })],
       (t) => t.freeInMin,
       openJobs(lane, new Set()),
     );
-    expect(g['free-now'].map((r) => r.truck.id)).toEqual(['#1']);
-    expect(g['free-shortly'].map((r) => r.truck.id)).toEqual(['#2']);
-    expect(g.committed.map((r) => r.truck.id)).toEqual(['#3']);
+    expect(g['free-now'].map((r) => r.vehicle.id)).toEqual(['#1']);
+    expect(g['free-shortly'].map((r) => r.vehicle.id)).toEqual(['#2']);
+    expect(g.committed.map((r) => r.vehicle.id)).toEqual(['#3']);
   });
 
-  it('never proposes the same station to two trucks', () => {
+  it('never proposes the same station to two vehicles', () => {
     const g = groupFleet(
-      [truck({ id: '#1' }), truck({ id: '#2' }), truck({ id: '#3' })],
+      [vehicle({ id: '#1' }), vehicle({ id: '#2' }), vehicle({ id: '#3' })],
       (t) => t.freeInMin,
       openJobs(lane, new Set()),
     );
@@ -149,8 +149,8 @@ describe('groupFleet', () => {
     expect(new Set(picked).size).toBe(picked.length);
   });
 
-  it('leaves committed trucks unmatched — there is nothing to decide', () => {
-    const g = groupFleet([truck({ freeInMin: 90 })], (t) => t.freeInMin, openJobs(lane, new Set()));
+  it('leaves committed vehicles unmatched — there is nothing to decide', () => {
+    const g = groupFleet([vehicle({ freeInMin: 90 })], (t) => t.freeInMin, openJobs(lane, new Set()));
     expect(g.committed[0]!.match).toBeNull();
   });
 });

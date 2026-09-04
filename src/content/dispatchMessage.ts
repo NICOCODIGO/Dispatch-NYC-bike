@@ -17,8 +17,44 @@ import { formatAgo } from '../lib/time';
 export function instructionFor(row: StationRow): string {
   const a = row.action;
   if (!a || a.kind === 'none') return 'assess on arrival';
-  if (a.kind === 'mechanic') return 'mechanical fault — do not send a truck';
+  if (a.kind === 'mechanic') return 'mechanical fault — do not send a vehicle';
   return a.kind === 'drop' ? `drop ${a.bikes} bikes` : `collect ${a.bikes} bikes`;
+}
+
+/**
+ * The second errand: what to take away.
+ *
+ * Kept as its own line rather than folded into the instruction above, because
+ * "drop 12 bikes, load 4 dead ones" is two jobs with two different destinations
+ * — the rack, and the back of the vehicle bound for the warehouse — and a
+ * driver reading one run-on sentence over a radio will act on the first half.
+ *
+ * Returns null when there is nothing to say, which is most stations. A dispatch
+ * note that always carries a line about dead bikes trains a driver to skip it,
+ * and that line is the one that occasionally says "brakes".
+ */
+export function pickupLineFor(row: StationRow): string | null {
+  const p = row.pickup;
+  if (!p || p.load === 0) return null;
+
+  const bikes = `${p.load} dead bike${p.load === 1 ? '' : 's'}`;
+  return p.urgency === 'immediate'
+    ? `also load ${bikes} — ${p.hazards > 0 ? 'unsafe to leave locked here' : 'they are blocking docks riders need'}`
+    : `also load ${bikes} if there is room — routine sweep, no rush`;
+}
+
+/**
+ * Bikes a rider has reported that nobody has checked yet.
+ *
+ * Deliberately not phrased as work for this crew: a rebalancing driver is not
+ * the person who decides whether a reported bike is actually broken, and about
+ * two thirds of these turn out to be fine. It is on the note so the driver is
+ * not surprised by red docks that the load count does not account for.
+ */
+export function inspectLineFor(row: StationRow): string | null {
+  const p = row.pickup;
+  if (!p || p.inspect === 0) return null;
+  return `${p.inspect} more reported but unchecked — leave for a mechanic`;
 }
 
 /** Why, in a sentence a driver can act on without opening the dashboard. */
@@ -46,13 +82,20 @@ export function reasonFor(row: StationRow): string {
   return `${state} — ${counts}${age}`;
 }
 
-export function composeDispatch(row: StationRow, truckId: string, at: string): string {
+export function composeDispatch(row: StationRow, vehicleId: string, at: string): string {
+  const pickup = pickupLineFor(row);
+  const inspect = inspectLineFor(row);
+
   return [
-    `DISPATCH · Truck ${truckId}`,
+    `DISPATCH · Vehicle ${vehicleId}`,
     `${row.name} — ${row.borough}`,
     row.stationNumber ? `Station ${row.stationNumber}` : null,
     '',
     `DO:   ${instructionFor(row)}`,
+    // Indented under DO rather than given its own keyword: it is part of the
+    // same stop, and a third label would imply a third errand.
+    pickup ? `      ${pickup}` : null,
+    inspect ? `      ${inspect}` : null,
     `WHY:  ${reasonFor(row)}`,
     `SCORE: ${row.score ?? '—'}/100 · last reported ${row.updated}`,
     '',

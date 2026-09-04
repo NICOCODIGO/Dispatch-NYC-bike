@@ -86,7 +86,7 @@ interface DispatchState {
 export const useDispatch = create<DispatchState>((set, get) => ({
   phase: 'loading',
   scored: [],
-  lanes: { truck: [], mechanic: [], unverified: [], quiet: [] },
+  lanes: { vehicle: [], mechanic: [], unverified: [], quiet: [] },
   byId: new Map(),
   summary: null,
   feedUpdatedMs: null,
@@ -139,7 +139,7 @@ export const useDispatch = create<DispatchState>((set, get) => ({
         revision: get().revision + 1,
       });
 
-      void recordSnapshot(lanes.truck, feed.fetchedAtMs);
+      void recordSnapshot(lanes.vehicle, feed.fetchedAtMs);
     } catch (err) {
       if (inFlight?.signal.aborted) return;
 
@@ -175,16 +175,16 @@ const rowFor = (s: ScoredStation, t: number): SnapshotRow => ({
   score: s.breakdown.score,
   category: s.breakdown.category,
   signal: s.breakdown.signal,
-  needsTruck: s.breakdown.needsTruck,
+  needsVehicle: s.breakdown.needsVehicle,
   bikes: s.breakdown.fill.bikes,
   docks: s.breakdown.fill.docks,
 });
 
-/** Records the worst truck-actionable stations. Verify asks whether flagging a
- *  station predicted that it got fixed, so only stations a truck could have
+/** Records the worst vehicle-actionable stations. Verify asks whether flagging a
+ *  station predicted that it got fixed, so only stations a vehicle could have
  *  fixed belong in that record. */
-async function recordSnapshot(truckLane: ScoredStation[], t: number) {
-  const flagged = truckLane.filter((s) => s.breakdown.needsTruck).slice(0, SNAPSHOT_TOP_N);
+async function recordSnapshot(vehicleLane: ScoredStation[], t: number) {
+  const flagged = vehicleLane.filter((s) => s.breakdown.needsVehicle).slice(0, SNAPSHOT_TOP_N);
   const rows: SnapshotRow[] = flagged.map((s) => rowFor(s, t));
 
   // Also re-record any station we have flagged before that is no longer

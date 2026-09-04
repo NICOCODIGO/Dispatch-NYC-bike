@@ -1,9 +1,9 @@
-import { NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import { OUTCOME_DELTA_TOLERANCE } from '../model/verify';
 import type { StationRow } from './stationRow';
 
 /**
- * Did the truck we sent actually fix anything?
+ * Did the vehicle we sent actually fix anything?
  *
  * Dispatch used to record intent and then go silent — the row was marked, the
  * log had a line, and nothing ever came back. A board that can issue orders
@@ -27,10 +27,10 @@ export const OUTCOME_LABEL: Record<RunOutcome, string> = {
 };
 
 export const OUTCOME_MEANING: Record<RunOutcome, string> = {
-  recovered: `Back below the ${NEEDS_TRUCK_THRESHOLD}-point dispatch threshold. The trip did what it was for.`,
+  recovered: `Back below the ${NEEDS_VEHICLE_THRESHOLD}-point dispatch threshold. The trip did what it was for.`,
   partial: 'Bikes moved and the station improved, but it is still over the threshold.',
   'no-change': 'Barely any bikes moved. Either the crew could not access it, or demand undid the work as fast as it was done.',
-  worse: 'The station scores higher than when the truck was sent. Riders outpaced the delivery, or it was the wrong call.',
+  worse: 'The station scores higher than when the vehicle was sent. Riders outpaced the delivery, or it was the wrong call.',
 };
 
 /** How long a run is assumed to take before it is treated as finished. */
@@ -50,7 +50,7 @@ export interface RunSnapshot {
 
 export interface DispatchRun {
   id: string;
-  truckId: string;
+  vehicleId: string;
   depot: string;
   stationId: string;
   stationName: string;
@@ -88,8 +88,8 @@ export function elapsedMinutes(run: DispatchRun, now = Date.now()): number {
 /**
  * Bikes that actually moved in the ordered direction.
  *
- * Clamped at zero: if a station gained bikes while a truck was collecting,
- * that is riders arriving, not a truck delivering in reverse.
+ * Clamped at zero: if a station gained bikes while a vehicle was collecting,
+ * that is riders arriving, not a vehicle delivering in reverse.
  */
 export function bikesMoved(run: DispatchRun): number | null {
   if (!run.after || run.before.bikes === null || run.after.bikes === null) return null;
@@ -112,7 +112,7 @@ export function outcomeOf(run: DispatchRun): RunOutcome | null {
   const after = run.after.score;
   if (after === null) return 'no-change';
 
-  if (after < NEEDS_TRUCK_THRESHOLD) return 'recovered';
+  if (after < NEEDS_VEHICLE_THRESHOLD) return 'recovered';
   if (before !== null && after > before + OUTCOME_DELTA_TOLERANCE) return 'worse';
 
   const share = realization(run);
@@ -182,7 +182,7 @@ function groupBy(runs: DispatchRun[], key: (r: DispatchRun) => string): Record<s
   return Object.fromEntries([...groups.entries()].map(([k, v]) => [k, accumulate(v)]));
 }
 
-export const statsByTruck = (runs: DispatchRun[]) => groupBy(runs, (r) => r.truckId);
+export const statsByVehicle = (runs: DispatchRun[]) => groupBy(runs, (r) => r.vehicleId);
 export const statsByDepot = (runs: DispatchRun[]) => groupBy(runs, (r) => r.depot);
 export const statsOverall = accumulate;
 

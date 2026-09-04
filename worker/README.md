@@ -27,9 +27,9 @@ Verify then reads a real time series instead of a session log.
 It turns the threshold from a considered guess into something measurable. With
 weeks of history you can ask the question the app currently cannot:
 
-- Does a high score actually predict that a truck arrives?
+- Does a high score actually predict that a vehicle arrives?
 - How long does a station at 90 take to recover, versus one at 60?
-- Is `NEEDS_TRUCK_THRESHOLD = 55` the right line, or should it move by borough
+- Is `NEEDS_VEHICLE_THRESHOLD = 55` the right line, or should it move by borough
   or time of day?
 
 ## Setup, when it is time

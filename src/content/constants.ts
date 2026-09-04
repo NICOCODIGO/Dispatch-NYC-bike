@@ -9,7 +9,7 @@ import {
   CAPACITY_WEIGHT_SPAN,
   CRITICAL_THRESHOLD,
   FLOODED_FILL_RATIO,
-  NEEDS_TRUCK_THRESHOLD,
+  NEEDS_VEHICLE_THRESHOLD,
   STALENESS_GRACE_MINUTES,
   STALENESS_MAX_MINUTES,
   STALENESS_MAX_PENALTY,
@@ -75,9 +75,9 @@ export interface ScoringConstant {
 
 export const SCORING_CONSTANTS: ScoringConstant[] = [
   {
-    key: 'NEEDS_TRUCK_THRESHOLD',
+    key: 'NEEDS_VEHICLE_THRESHOLD',
     label: 'Dispatch threshold',
-    value: NEEDS_TRUCK_THRESHOLD,
+    value: NEEDS_VEHICLE_THRESHOLD,
     why: 'The line between "worth a trip" and "drifting but still serving riders". Nothing has ever measured whether 55 is right — that needs recovery data over weeks.',
     provenance: 'guess',
     editable: { min: 30, max: 90, step: 5 },
@@ -138,7 +138,7 @@ export const SCORING_CONSTANTS: ScoringConstant[] = [
     key: 'BASE_UNUSABLE',
     label: 'Base · unusable',
     value: BASE_UNUSABLE,
-    why: 'Scores highest because nothing about it self-corrects — but it is routed to a mechanic, so it never competes for a truck.',
+    why: 'Scores highest because nothing about it self-corrects — but it is routed to a mechanic, so it never competes for a vehicle.',
     provenance: 'reasoned',
     group: 'base',
   },
@@ -203,7 +203,7 @@ export const SCORING_CONSTANTS: ScoringConstant[] = [
     label: 'Unverified cutoff',
     value: STALENESS_MAX_MINUTES,
     unit: 'min',
-    why: 'Past this, counts are not evidence and the station leaves the ranking. Sending a truck on an hour-old reading is how you drive to a station that fixed itself forty minutes ago.',
+    why: 'Past this, counts are not evidence and the station leaves the ranking. Sending a vehicle on an hour-old reading is how you drive to a station that fixed itself forty minutes ago.',
     provenance: 'reasoned',
     group: 'freshness',
   },

@@ -22,7 +22,7 @@ import {
 } from '../model/roster';
 import { WORK_ORDER_LABEL, ageMinutes, backlog, slaState } from '../model/workOrder';
 import { ROSTER } from '../mock/data';
-import { TRUCKS } from '../mock/data';
+import { VEHICLES } from '../mock/data';
 import { cn } from '../lib/cn';
 
 /**
@@ -48,7 +48,7 @@ const STATUS_TONE: Record<StaffStatus, Tone> = {
 };
 
 export function Shift() {
-  const lane = useDispatch((s) => s.lanes.truck);
+  const lane = useDispatch((s) => s.lanes.vehicle);
   const workOrders = useConsole((s) => s.workOrders);
 
   const now = Date.now();
@@ -57,8 +57,8 @@ export function Shift() {
   const demand = useMemo(() => rebalanceDemand(lane), [lane]);
 
   // Same fleet arithmetic the method sheet uses, so the two screens cannot
-  // disagree about how big a truck is.
-  const activeCapacity = TRUCKS.filter((t) => t.state !== 'idle').reduce(
+  // disagree about how big a vehicle is.
+  const activeCapacity = VEHICLES.filter((t) => t.state !== 'idle').reduce(
     (sum, t) => sum + t.capacity,
     0,
   );
@@ -67,7 +67,7 @@ export function Shift() {
     () =>
       shiftCapacity(ROSTER, workOrders, {
         relocatable: demand.relocatable,
-        truckCapacity: activeCapacity,
+        vehicleCapacity: activeCapacity,
         date,
       }),
     [workOrders, demand.relocatable, activeCapacity, date],
@@ -94,11 +94,11 @@ export function Shift() {
           headline={verdict(cap)}
           detail={
             cap.runsNeeded === null ? (
-              'Every truck is idle, so there is no capacity to divide the backlog into.'
+              'Every vehicle is idle, so there is no capacity to divide the backlog into.'
             ) : (
               <>
                 {demand.relocatable.toLocaleString('en-US')} bikes are worth moving right now.
-                At {activeCapacity} bikes of active truck capacity that is{' '}
+                At {activeCapacity} bikes of active vehicle capacity that is{' '}
                 <strong className="font-semibold">{cap.runsNeeded} full runs</strong>, and{' '}
                 {cap.drivers} driver{cap.drivers === 1 ? '' : 's'} on this shift can complete about{' '}
                 <strong className="font-semibold">{cap.runsAvailable}</strong>. Moving the dispatch
@@ -135,7 +135,7 @@ export function Shift() {
             foot={orders.breached > 0 ? `${orders.breached} past target` : 'all inside target'}
             to="/maintenance/orders"
             actionLabel="Open maintenance operations."
-            hint="Repair and swap work outstanding. Separate from rebalancing — a truck full of bikes cannot fix a dead dock."
+            hint="Repair and swap work outstanding. Separate from rebalancing — a vehicle full of bikes cannot fix a dead dock."
           />
           <StatCard
             label="Unassignable"
@@ -185,7 +185,7 @@ export function Shift() {
                         {p.vehicleId && (
                           <>
                             {' '}
-                            · <span className="num">Truck {p.vehicleId}</span>
+                            · <span className="num">Vehicle {p.vehicleId}</span>
                           </>
                         )}
                       </span>

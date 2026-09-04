@@ -14,7 +14,7 @@ import {
   StatusPill,
 } from '../ui/primitives';
 import { MAPBOX_TOKEN } from '../ui/mapToken';
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import type { StationRow } from '../data/stationRow';
 
 /**
@@ -32,8 +32,8 @@ import { cn } from '../lib/cn';
 import {
   STATIONS,
   TOTAL_STATIONS,
-  TRUCKS_ACTIVE,
-  TRUCKS_TOTAL,
+  VEHICLES_ACTIVE,
+  VEHICLES_TOTAL,
   ZONES,
   stationById,
 } from '../mock/data';
@@ -73,7 +73,7 @@ const STATION_MARKERS: Marker[] = [
   { x: 25, y: 55, tone: 'warn' },
 ];
 
-const TRUCK_MARKERS = [
+const VEHICLE_MARKERS = [
   { x: 38, y: 24 },
   { x: 40, y: 41 },
   { x: 55, y: 62 },
@@ -92,7 +92,7 @@ const ZONE_MARKERS = [
 export function MapView() {
   const [layer, setLayer] = useState<'bikes' | 'docks'>('bikes');
   const [jump, setJump] = useState('');
-  const [needsTruckOnly, setNeedsTruckOnly] = useState(false);
+  const [needsVehicleOnly, setNeedsVehicleOnly] = useState(false);
   /** The pin the popup is describing. Clicking a pin moves the popup to it. */
   const [focusId, setFocusId] = useState('102');
   const openStation = useConsole((s) => s.openStation);
@@ -103,7 +103,7 @@ export function MapView() {
   // Real geography needs both a token and a feed. Either missing falls back to
   // the schematic rather than to an empty rectangle.
   const live = Boolean(MAPBOX_TOKEN) && scored.length > 0;
-  const needsTruck = scored.filter((s) => s.breakdown.needsTruck).length;
+  const needsVehicle = scored.filter((s) => s.breakdown.needsVehicle).length;
 
   /**
    * Where the map should fly next.
@@ -143,19 +143,19 @@ export function MapView() {
               style={{ backgroundColor: TONE.ok.fg }}
             />
             {(live ? scored.length : TOTAL_STATIONS).toLocaleString('en-US')} stations ·{' '}
-            {live && <>{needsTruck.toLocaleString('en-US')} need a truck · </>}
-            {TRUCKS_ACTIVE}/{TRUCKS_TOTAL} trucks active
+            {live && <>{needsVehicle.toLocaleString('en-US')} need a vehicle · </>}
+            {VEHICLES_ACTIVE}/{VEHICLES_TOTAL} vehicles active
           </span>
         }
         actions={
           <>
             {live && (
               <FilterChip
-                label="Needs a truck"
+                label="Needs a vehicle"
                 tone="warn"
-                count={needsTruck}
-                active={needsTruckOnly}
-                onClick={() => setNeedsTruckOnly((v) => !v)}
+                count={needsVehicle}
+                active={needsVehicleOnly}
+                onClick={() => setNeedsVehicleOnly((v) => !v)}
               />
             )}
             <Segmented
@@ -227,12 +227,12 @@ export function MapView() {
               <StationMap
                 scored={scored}
                 layer={layer === 'bikes' ? 'score' : 'fill'}
-                needsTruckOnly={needsTruckOnly}
+                needsVehicleOnly={needsVehicleOnly}
                 focusId={flyId ?? arrival.focus ?? null}
                 onSelect={openStation}
               />
             </Suspense>
-            <MapLegend layer={layer} showTruck={false} />
+            <MapLegend layer={layer} showVehicle={false} />
           </>
         ) : (
           <Schematic
@@ -326,14 +326,14 @@ function Schematic({
           </span>
         ))}
 
-        {TRUCK_MARKERS.map((m, i) => (
+        {VEHICLE_MARKERS.map((m, i) => (
           <span
             key={`t${i}`}
             aria-hidden="true"
             className="absolute flex h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-[var(--color-ink)] bg-[var(--color-surface)] text-[var(--color-ink)] shadow-sm"
             style={{ left: `${m.x}%`, top: `${m.y}%` }}
           >
-            <Icon name="truck" size={12} />
+            <Icon name="vehicle" size={12} />
           </span>
         ))}
 
@@ -350,7 +350,7 @@ function Schematic({
  * text beside it — without this, four colored dots mean nothing to anyone who
  * has not already memorised the Score Guide on the queue.
  */
-function MapLegend({ layer, showTruck = true }: { layer: 'bikes' | 'docks'; showTruck?: boolean }) {
+function MapLegend({ layer, showVehicle = true }: { layer: 'bikes' | 'docks'; showVehicle?: boolean }) {
   // The two layers colour the same dots by different questions, so one fixed
   // key would be wrong half the time. Urgency reuses the Score Guide's bands
   // exactly; fill reuses the warm/cool split — warm means nobody can rent,
@@ -359,8 +359,8 @@ function MapLegend({ layer, showTruck = true }: { layer: 'bikes' | 'docks'; show
     layer === 'bikes'
       ? [
           { label: `Critical · ${CRITICAL_THRESHOLD}+`, tone: 'empty' },
-          { label: `Needs a truck · ${NEEDS_TRUCK_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`, tone: 'warn' },
-          { label: `Drifting · under ${NEEDS_TRUCK_THRESHOLD}`, tone: 'ok' },
+          { label: `Needs a vehicle · ${NEEDS_VEHICLE_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`, tone: 'warn' },
+          { label: `Drifting · under ${NEEDS_VEHICLE_THRESHOLD}`, tone: 'ok' },
           // Called "Unverified" for about an hour, which was wrong by two
           // orders of magnitude: exactly one station in the network is in the
           // unverified lane, while ~107 grey dots are racks the feed lists but
@@ -394,15 +394,15 @@ function MapLegend({ layer, showTruck = true }: { layer: 'bikes' | 'docks'; show
       <p className="mt-2 border-t border-[var(--color-line-soft)] pt-2 text-[10px] leading-snug text-[var(--color-ink-3)]">
         Dot size is station capacity. Click one to open its receipt.
       </p>
-      {showTruck && (
+      {showVehicle && (
         <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
           <span
             aria-hidden="true"
             className="flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded border border-[var(--color-ink)] bg-[var(--color-surface)]"
           >
-            <Icon name="truck" size={9} />
+            <Icon name="vehicle" size={9} />
           </span>
-          Truck
+          Vehicle
         </div>
       )}
     </div>
@@ -465,11 +465,11 @@ function StationPopup({
 
       <Button
         variant="dark"
-        icon="truck"
+        icon="vehicle"
         className="mt-3 w-full"
         notBuilt="Dispatching lives in the station drawer — click a dot on the map."
       >
-        Dispatch Truck
+        Dispatch Vehicle
       </Button>
       <Link
         to={focusHref('/', station.id, 'Map View', '/dispatch/map')}

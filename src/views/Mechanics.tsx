@@ -43,7 +43,7 @@ import { DEPOTS, ROSTER, mechanicName, stationById, type ActivityEntry } from '.
 import { cn } from '../lib/cn';
 
 /**
- * Work a truck cannot do.
+ * Work a vehicle cannot do.
  *
  * Two tables and a list, in the order a shift uses them: what the feed says is
  * broken, which sites carry the most dead hardware, and the work orders those
@@ -88,7 +88,7 @@ export function Mechanics() {
     <>
       <PageHeader
         title="Maintenance Operations"
-        subtitle={`Work a truck cannot do. ${faults.length} station${faults.length === 1 ? '' : 's'} reported broken by the feed · ${stats.open} open work order${stats.open === 1 ? '' : 's'}${stats.breached > 0 ? `, ${stats.breached} past target` : ''} · ${mechanicsOnShift} mechanic${mechanicsOnShift === 1 ? '' : 's'} on shift · ${pending} pending assignment`}
+        subtitle={`Work a vehicle cannot do. ${faults.length} station${faults.length === 1 ? '' : 's'} reported broken by the feed · ${stats.open} open work order${stats.open === 1 ? '' : 's'}${stats.breached > 0 ? `, ${stats.breached} past target` : ''} · ${mechanicsOnShift} mechanic${mechanicsOnShift === 1 ? '' : 's'} on shift · ${pending} pending assignment`}
         actions={
           <>
             <Segmented
@@ -229,7 +229,7 @@ function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
       detail={
         <>
           {n(loss.docks)} docks switched off, {(loss.share * 100).toFixed(1)}% of the network — a
-          hole no truck fixes, because moving bikes cannot restart a station that is not renting or
+          hole no vehicle fixes, because moving bikes cannot restart a station that is not renting or
           returning.
           {worst && loss.byBorough.length > 1 && (
             <> {worst.borough} carries the most, with {worst.stations}.</>
@@ -256,7 +256,7 @@ function OutOfServiceFinding({ faults }: { faults: ScoredStation[] }) {
 
    These are live: stations whose operator flags say they are not renting, not
    returning, or reporting no usable slots. `triage.ts` routes them here rather
-   than into the truck queue, because a truck full of bikes cannot fix a dead
+   than into the vehicle queue, because a vehicle full of bikes cannot fix a dead
    dock.
 
    They are not work orders yet — nobody has been assigned, and the feed cannot
@@ -416,7 +416,7 @@ function FeedFaults({ focusId }: { focusId: string | null }) {
 
 /** Presentation only — the model stays free of the UI vocabulary. */
 const TYPE_ICON: Record<WorkOrderType, IconName> = {
-  rebalance: 'truck',
+  rebalance: 'vehicle',
   'battery-swap': 'battery-low',
   'station-power': 'plug-zap',
   'dock-repair': 'cog',
@@ -550,7 +550,7 @@ function WorkOrderCard({ order, now }: { order: WorkOrder; now: number }) {
               className="inline-flex items-center gap-1 text-[10px] font-semibold tracking-[0.08em] not-italic uppercase"
               style={{ color: TONE.ok.fg }}
             >
-              <Icon name="truck" size={12} />
+              <Icon name="vehicle" size={12} />
               {STATUS_LABEL[order.status]}
             </span>
           </p>

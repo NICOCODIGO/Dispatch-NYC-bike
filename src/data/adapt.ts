@@ -1,8 +1,11 @@
 import type { StationCategory } from '../model/score';
 import type { ScoredStation } from '../model/summary';
 import { laneOf } from '../model/triage';
+import { isServing } from '../model/service';
+import { NO_PICKUP, applyTriage, pickupFor, type TriageLog } from '../model/pickup';
+import { bikesAt } from '../sim/fleet';
 import { formatReportedAge } from '../lib/time';
-import { truckAction } from './insights';
+import { vehicleAction } from './insights';
 import { applyDuration, type Duration } from './duration';
 import type { Tone } from '../ui/tone';
 import type { StationRow, StatusLabel } from './stationRow';
@@ -41,7 +44,7 @@ const CATEGORY_STATUS: Record<StationCategory, StatusLabel> = {
  * Bar color per category.
  *
  * Not simply `CATEGORY_SIGNAL`, because the console grades severity where the
- * model only records direction. The signal says which way the truck drives;
+ * model only records direction. The signal says which way the vehicle drives;
  * the tone says that *and* how far gone the station is:
  *
  *   empty  (no bikes)  red      |  full    (no docks)   blue
@@ -85,7 +88,12 @@ export function toneFor(entry: ScoredStation): Tone {
   return CATEGORY_TONE[entry.breakdown.category];
 }
 
-export function toStationRow(entry: ScoredStation, duration?: Duration): StationRow {
+export function toStationRow(
+  entry: ScoredStation,
+  duration?: Duration,
+  nowMs: number = Date.now(),
+  triage: TriageLog = {},
+): StationRow {
   const { station, breakdown } = entry;
   const { fill, staleness } = breakdown;
   const lane = laneOf(breakdown);
@@ -93,13 +101,31 @@ export function toStationRow(entry: ScoredStation, duration?: Duration): Station
 
   // Duration only means anything for a station that is actually failing.
   const adjusted =
-    !unverified && breakdown.needsTruck ? applyDuration(breakdown, duration) : null;
+    !unverified && breakdown.needsVehicle ? applyDuration(breakdown, duration) : null;
+
+  /*
+   * The rack is only invented where the feed says something is wrong with it.
+   * `bikesAt` gives a condition to broken slots and to nothing else, so a
+   * station reporting no disabled bikes cannot produce a pickup — and most of
+   * the lane reports none, so simulating every rack on every poll would be a
+   * thousand racks built to be told there is nothing on them.
+   *
+   * Unverified stations are skipped for the reason they are skipped everywhere:
+   * elaborating a rack of numbered frames on counts the board has refused to
+   * score on is the one place this simulation could genuinely mislead.
+   */
+  const pickup =
+    !unverified && station.status.bikesDisabled > 0
+      ? pickupFor(applyTriage(bikesAt(station.status, nowMs), triage), breakdown)
+      : NO_PICKUP;
 
   return {
     id: station.stationId,
     name: station.name,
     borough: station.borough,
     docks: station.capacity,
+    serving: isServing(station.status),
+    pickup,
 
     openDocks: unverified ? undefined : fill.docks,
 
@@ -127,7 +153,7 @@ export function toStationRow(entry: ScoredStation, duration?: Duration): Station
       : undefined,
 
     stationNumber: `#${shortStationId(station.stationId)}`,
-    action: unverified ? undefined : truckAction(breakdown),
+    action: unverified ? undefined : vehicleAction(breakdown),
     breakdown,
 
     // Carried through verbatim so the drawer can show the observations the

@@ -12,9 +12,9 @@ import {
   TonePill,
 } from '../ui/primitives';
 import { TONE, type Tone } from '../ui/tone';
-import { useConsole, type TruckAssignment } from '../state/useConsole';
+import { useConsole, type VehicleAssignment } from '../state/useConsole';
 import { useDispatch } from '../store/useDispatch';
-import { rebalanceDemand, truckAction } from '../data/insights';
+import { rebalanceDemand, vehicleAction } from '../data/insights';
 import {
   AVAILABILITY_LABEL,
   AVAILABILITY_NOTE,
@@ -26,76 +26,76 @@ import {
   type FleetRow,
 } from '../data/fleet';
 import { TipBody, TipTitle, Tooltip } from '../ui/Tooltip';
-import { NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import {
-  TRUCKS,
-  TRUCK_FOCUS,
-  TRUCK_STATE_LABEL,
-  TRUCK_STATE_AVAILABILITY,
-  TRUCK_STATE_CYCLE,
-  TRUCK_STATE_MEANING,
-  TRUCK_STATE_TONE,
-  type Truck,
-  type TruckState,
+  VEHICLES,
+  VEHICLE_FOCUS,
+  VEHICLE_STATE_LABEL,
+  VEHICLE_STATE_AVAILABILITY,
+  VEHICLE_STATE_CYCLE,
+  VEHICLE_STATE_MEANING,
+  VEHICLE_STATE_TONE,
+  type Vehicle,
+  type VehicleState,
 } from '../mock/data';
 import { cn } from '../lib/cn';
 
 /**
  * The fleet.
  *
- * One truck is expanded at a time and everything else collapses to a single
+ * One vehicle is expanded at a time and everything else collapses to a single
  * line. A dispatcher is working one vehicle at a time; eight equally detailed
  * cards would be eight things to read before finding the one that matters.
  */
-export function TruckDispatch() {
-  const [focused, setFocused] = useState(TRUCK_FOCUS.id);
+export function VehicleDispatch() {
+  const [focused, setFocused] = useState(VEHICLE_FOCUS.id);
   const assignments = useConsole((s) => s.assignments);
 
   // Dispatching from the queue should be visible the moment you arrive here.
   // Without this the assignment existed but sat inside a collapsed row, so the
-  // page about trucks appeared not to have noticed.
+  // page about vehicles appeared not to have noticed.
   const latest = Object.values(assignments).sort((a, b) => b.at.localeCompare(a.at))[0];
   useEffect(() => {
-    if (latest) setFocused(latest.truckId);
-  }, [latest?.truckId, latest?.at]);
+    if (latest) setFocused(latest.vehicleId);
+  }, [latest?.vehicleId, latest?.at]);
   // Derived from assignments, not from the fixture array. Reading the static
-  // list meant dispatching a truck left it labelled Idle, kept the pill at
-  // "3 Idle", and let the headline go on claiming three trucks were doing
+  // list meant dispatching a vehicle left it labelled Idle, kept the pill at
+  // "3 Idle", and let the headline go on claiming three vehicles were doing
   // nothing immediately after you gave one a job.
-  const stateOf = (t: Truck) => effectiveState(t, assignments[t.id]);
-  const counts = TRUCKS.reduce<Record<string, number>>((acc, t) => {
+  const stateOf = (t: Vehicle) => effectiveState(t, assignments[t.id]);
+  const counts = VEHICLES.reduce<Record<string, number>>((acc, t) => {
     const s = stateOf(t);
     acc[s] = (acc[s] ?? 0) + 1;
     return acc;
   }, {});
   const idle = counts.idle ?? 0;
 
-  const lane = useDispatch((s) => s.lanes.truck);
+  const lane = useDispatch((s) => s.lanes.vehicle);
   const summary = useDispatch((s) => s.summary);
   const demand = rebalanceDemand(lane);
 
   /**
    * Outstanding work, in single-vehicle loads.
    *
-   * This replaced a figure labelled "truck runs" that divided the workload by
+   * This replaced a figure labelled "vehicle runs" that divided the workload by
    * the capacity of the *entire active fleet* — so it counted how many times
-   * all five trucks together would fill and empty. At 3,605 bikes that printed
-   * "16 truck runs" for what is really 16 × 5 = 80 individual trips. Nobody
-   * reads "16 truck runs" as eighty.
+   * all five vehicles together would fill and empty. At 3,605 bikes that printed
+   * "16 vehicle runs" for what is really 16 × 5 = 80 individual trips. Nobody
+   * reads "16 vehicle runs" as eighty.
    *
    * Dividing by one vehicle instead gives a number that means what it says and
-   * does not silently change when a truck goes on or off shift — the work is
+   * does not silently change when a vehicle goes on or off shift — the work is
    * the work regardless of who is available to do it.
    */
-  const truckCapacity = Math.max(...TRUCKS.map((t) => t.capacity));
-  const truckloads = truckCapacity > 0 ? Math.ceil(demand.relocatable / truckCapacity) : 0;
+  const vehicleCapacity = Math.max(...VEHICLES.map((t) => t.capacity));
+  const loads = vehicleCapacity > 0 ? Math.ceil(demand.relocatable / vehicleCapacity) : 0;
 
   /**
    * Availability, and a candidate job for everyone who can take one.
    *
-   * An assigned truck is committed no matter what the fixture says its
+   * An assigned vehicle is committed no matter what the fixture says its
    * `freeInMin` is — the assignment is the newer fact. Without this, dispatching
-   * a truck from the queue left it sitting in FREE NOW being offered a second
+   * a vehicle from the queue left it sitting in FREE NOW being offered a second
    * station.
    */
   const taken = new Set(
@@ -105,7 +105,7 @@ export function TruckDispatch() {
   );
   const jobs = useMemo(() => openJobs(lane, taken), [lane, assignments]);
   const groups = useMemo(
-    () => groupFleet(TRUCKS, (t) => (assignments[t.id] ? Math.max(t.freeInMin, 999) : t.freeInMin), jobs),
+    () => groupFleet(VEHICLES, (t) => (assignments[t.id] ? Math.max(t.freeInMin, 999) : t.freeInMin), jobs),
     [assignments, jobs],
   );
 
@@ -113,7 +113,7 @@ export function TruckDispatch() {
     <>
       <PageHeader
         title="Fleet Operations"
-        subtitle={`${TRUCKS.length} trucks against ${(summary?.needsTruck ?? 0).toLocaleString('en-US')} stations that need one. What is outstanding, who is moving, and what the idle trucks could be doing.`}
+        subtitle={`${VEHICLES.length} vehicles against ${(summary?.needsVehicle ?? 0).toLocaleString('en-US')} stations that need one. What is outstanding, who is moving, and what the idle vehicles could be doing.`}
         actions={
           <>
             <Button icon="file-text" notBuilt="Would export the shift's fleet state as a PDF.">
@@ -122,7 +122,7 @@ export function TruckDispatch() {
             <Button
               variant="dark"
               icon="plus"
-              notBuilt="Multi-stop routing is not modelled — assign one station at a time from a truck card."
+              notBuilt="Multi-stop routing is not modelled — assign one station at a time from a vehicle card."
             >
               Assign New Route
             </Button>
@@ -134,23 +134,23 @@ export function TruckDispatch() {
         <WorkloadFinding
           demand={demand}
           idle={idle}
-          truckloads={truckloads}
-          truckCapacity={truckCapacity}
-          needsTruck={summary?.needsTruck ?? 0}
+          loads={loads}
+          vehicleCapacity={vehicleCapacity}
+          needsVehicle={summary?.needsVehicle ?? 0}
         />
 
         <div className="mt-3.5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
           <div className="min-w-0">
             <div className="mb-2.5 flex items-center justify-between gap-3">
-              <h2 className="eyebrow text-[10px]">Operational fleet ({TRUCKS.length} total)</h2>
+              <h2 className="eyebrow text-[10px]">Operational fleet ({VEHICLES.length} total)</h2>
               <div className="flex flex-wrap items-center gap-1.5">
-                {(Object.keys(TRUCK_STATE_LABEL) as TruckState[])
+                {(Object.keys(VEHICLE_STATE_LABEL) as VehicleState[])
                   .filter((s) => (counts[s] ?? 0) > 0)
                   .map((s) => (
                     <TonePill
                       key={s}
-                      label={`${counts[s]} ${TRUCK_STATE_LABEL[s]}`}
-                      tone={TRUCK_STATE_TONE[s]}
+                      label={`${counts[s]} ${VEHICLE_STATE_LABEL[s]}`}
+                      tone={VEHICLE_STATE_TONE[s]}
                     />
                   ))}
               </div>
@@ -164,7 +164,7 @@ export function TruckDispatch() {
             />
           </div>
 
-          <aside className="flex flex-col gap-3.5" aria-label="Active truck focus">
+          <aside className="flex flex-col gap-3.5" aria-label="Active vehicle focus">
             <FocusCard />
             <FleetStates counts={counts} />
             <NextUp />
@@ -176,19 +176,19 @@ export function TruckDispatch() {
 }
 
 /**
- * What a truck is doing once a coordinator has given it a job.
+ * What a vehicle is doing once a coordinator has given it a job.
  *
  *   Idle      parked at a depot, nothing assigned
  *   Loading   moving bikes on or off — at a depot, or at a station too full
  *   En route  driving between two points
  *
- * A truck sent to *drop* bikes with an empty bed has to fill up first, so it
+ * A vehicle sent to *drop* bikes with an empty bed has to fill up first, so it
  * goes to Loading; anything else is already on the road. Crude, but it is the
  * honest consequence of the instruction rather than a state picked at random.
  */
-function effectiveState(truck: Truck, assignment?: TruckAssignment): TruckState {
-  if (!assignment) return truck.state;
-  const needsStock = assignment.instruction.startsWith('drop') && truck.load === 0;
+function effectiveState(vehicle: Vehicle, assignment?: VehicleAssignment): VehicleState {
+  if (!assignment) return vehicle.state;
+  const needsStock = assignment.instruction.startsWith('drop') && vehicle.load === 0;
   return needsStock ? 'loading' : 'en-route';
 }
 
@@ -199,21 +199,21 @@ function effectiveState(truck: Truck, assignment?: TruckAssignment): TruckState 
 function WorkloadFinding({
   demand,
   idle,
-  truckloads,
-  truckCapacity,
-  needsTruck,
+  loads,
+  vehicleCapacity,
+  needsVehicle,
 }: {
   demand: ReturnType<typeof rebalanceDemand>;
   idle: number;
   /** Outstanding work in single-vehicle loads. Independent of fleet size. */
-  truckloads: number;
-  truckCapacity: number;
-  needsTruck: number;
+  loads: number;
+  vehicleCapacity: number;
+  needsVehicle: number;
 }) {
-  if (needsTruck === 0) {
+  if (needsVehicle === 0) {
     return (
       <Finding
-        icon="truck"
+        icon="vehicle"
         tone="mute"
         headline="Waiting for the first poll…"
         detail="Outstanding work is computed from the live queue."
@@ -221,33 +221,33 @@ function WorkloadFinding({
     );
   }
 
-  // Idle trucks while work is outstanding is the whole story of this screen.
-  const tone: Tone = idle > 0 && needsTruck > 0 ? 'empty' : truckloads > 20 ? 'warn' : 'ok';
+  // Idle vehicles while work is outstanding is the whole story of this screen.
+  const tone: Tone = idle > 0 && needsVehicle > 0 ? 'empty' : loads > 20 ? 'warn' : 'ok';
 
   return (
     <Finding
-      icon="truck"
+      icon="vehicle"
       tone={tone}
       /*
-       * The headline used to read "3 of 8 trucks are idle while 769 stations
+       * The headline used to read "3 of 8 vehicles are idle while 769 stations
        * need one", which invites exactly the wrong arithmetic: *one* refers
-       * back to trucks, so a reader lands on 769 trucks and concludes the fleet
+       * back to vehicles, so a reader lands on 769 vehicles and concludes the fleet
        * is short by 761. It compared a count of vehicles against a count of
        * places, which are not the same kind of thing, and never said that one
-       * truckload serves several stations.
+       * load serves several stations.
        *
-       * Both halves are now stated in truckloads — a unit that means the same
+       * Both halves are now stated in loads — a unit that means the same
        * thing on either side of the sentence.
        */
       headline={
         idle > 0 ? (
           <>
-            {idle} of {TRUCKS.length} trucks are parked while{' '}
-            {truckloads.toLocaleString('en-US')} truckloads of rebalancing sit outstanding.
+            {idle} of {VEHICLES.length} vehicles are parked while{' '}
+            {loads.toLocaleString('en-US')} loads of rebalancing sit outstanding.
           </>
         ) : (
           <>
-            The whole fleet is out, against {truckloads.toLocaleString('en-US')} truckloads of
+            The whole fleet is out, against {loads.toLocaleString('en-US')} loads of
             rebalancing.
           </>
         )
@@ -261,13 +261,13 @@ function WorkloadFinding({
             <>
               {' '}
               <strong className="font-semibold text-[var(--color-ink)]">
-                {(idle * truckCapacity).toLocaleString('en-US')} bikes of carrying capacity is parked
+                {(idle * vehicleCapacity).toLocaleString('en-US')} bikes of carrying capacity is parked
                 at a depot right now.
               </strong>
             </>
           )}{' '}
-          One load is emptied across several stops, so {truckloads.toLocaleString('en-US')} loads —
-          not {needsTruck.toLocaleString('en-US')} — is the real trip count.
+          One load is emptied across several stops, so {loads.toLocaleString('en-US')} loads —
+          not {needsVehicle.toLocaleString('en-US')} — is the real trip count.
         </>
       }
       stats={[
@@ -275,9 +275,9 @@ function WorkloadFinding({
         { label: 'to collect', value: demand.surplus.toLocaleString('en-US'), tone: 'flood' },
         { label: 'relocatable', value: demand.relocatable.toLocaleString('en-US') },
         {
-          label: 'truckloads',
-          value: truckloads.toLocaleString('en-US'),
-          tone: truckloads > 20 ? 'warn' : 'ok',
+          label: 'loads',
+          value: loads.toLocaleString('en-US'),
+          tone: loads > 20 ? 'warn' : 'ok',
         },
         { label: 'idle', value: idle, tone: idle > 0 ? 'empty' : 'ok' },
       ]}
@@ -293,18 +293,18 @@ function WorkloadFinding({
  * use, so "what does this word mean" has one answer and one interaction
  * everywhere in the app.
  */
-export function TruckStateChip({ state }: { state: TruckState }) {
-  const t = TONE[TRUCK_STATE_TONE[state]];
+export function VehicleStateChip({ state }: { state: VehicleState }) {
+  const t = TONE[VEHICLE_STATE_TONE[state]];
   return (
     <Tooltip
       help
       width={260}
       content={
         <>
-          <TipTitle>{TRUCK_STATE_LABEL[state]}</TipTitle>
-          <TipBody>{TRUCK_STATE_MEANING[state]}</TipBody>
+          <TipTitle>{VEHICLE_STATE_LABEL[state]}</TipTitle>
+          <TipBody>{VEHICLE_STATE_MEANING[state]}</TipBody>
           <p className="mt-1.5 border-t border-[var(--color-line-soft)] pt-1.5 text-[10px] leading-relaxed font-medium" style={{ color: t.fg }}>
-            {TRUCK_STATE_AVAILABILITY[state]}
+            {VEHICLE_STATE_AVAILABILITY[state]}
           </p>
         </>
       }
@@ -313,7 +313,7 @@ export function TruckStateChip({ state }: { state: TruckState }) {
         className="inline-flex items-center rounded-[5px] border px-1.5 py-[2px] text-[10px] font-semibold tracking-[0.06em] whitespace-nowrap uppercase"
         style={{ color: t.fg, backgroundColor: t.bg, borderColor: t.line }}
       >
-        {TRUCK_STATE_LABEL[state]}
+        {VEHICLE_STATE_LABEL[state]}
       </span>
     </Tooltip>
   );
@@ -341,11 +341,11 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
         }
       />
       <ol className="flex flex-col gap-2.5 px-3.5 pb-3">
-        {TRUCK_STATE_CYCLE.map((s, i) => (
+        {VEHICLE_STATE_CYCLE.map((s, i) => (
           <li key={s} className="relative flex items-start gap-2.5 pl-3">
             {/* The rule joining the steps: the cycle is the point, not four
                 unrelated labels that happen to share a card. */}
-            {i < TRUCK_STATE_CYCLE.length - 1 && (
+            {i < VEHICLE_STATE_CYCLE.length - 1 && (
               <span
                 aria-hidden="true"
                 className="absolute top-[14px] left-[3px] h-[calc(100%+4px)] w-px bg-[var(--color-line)]"
@@ -354,11 +354,11 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
             <span
               aria-hidden="true"
               className="absolute top-[5px] left-0 h-[7px] w-[7px] rounded-full"
-              style={{ backgroundColor: TONE[TRUCK_STATE_TONE[s]].fg }}
+              style={{ backgroundColor: TONE[VEHICLE_STATE_TONE[s]].fg }}
             />
             <span className="min-w-0">
               <span className="flex flex-wrap items-baseline gap-x-1.5">
-                <TruckStateChip state={s} />
+                <VehicleStateChip state={s} />
                 {(counts[s] ?? 0) > 0 && (
                   <span className="num text-[10px] text-[var(--color-ink-3)]">
                     {counts[s]} now
@@ -366,13 +366,13 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
                 )}
               </span>
               <span className="mt-1 block text-[10px] leading-snug text-[var(--color-ink-2)]">
-                {TRUCK_STATE_MEANING[s]}
+                {VEHICLE_STATE_MEANING[s]}
               </span>
               <span
                 className="mt-0.5 block text-[10px] leading-snug font-medium"
-                style={{ color: TONE[TRUCK_STATE_TONE[s]].fg }}
+                style={{ color: TONE[VEHICLE_STATE_TONE[s]].fg }}
               >
-                {TRUCK_STATE_AVAILABILITY[s]}
+                {VEHICLE_STATE_AVAILABILITY[s]}
               </span>
             </span>
           </li>
@@ -383,7 +383,7 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
         <FixtureNote>
           Nothing observes these. A real fleet reports state from a driver app, or infers it from
           vehicle GPS crossing a geofence around each depot and station. The public feed has no
-          vehicles at all — though a truck unloading <em>is</em> visible indirectly, as a station
+          vehicles at all — though a vehicle unloading <em>is</em> visible indirectly, as a station
           jumping thirty bikes between two polls.
         </FixtureNote>
       </div>
@@ -392,15 +392,15 @@ function FleetStates({ counts }: { counts: Record<string, number> }) {
 }
 
 /* ---------------------------------------------------------------------------
-   What an idle truck should be doing.
+   What an idle vehicle should be doing.
 --------------------------------------------------------------------------- */
 
 function NextUp() {
-  const lane = useDispatch((s) => s.lanes.truck);
+  const lane = useDispatch((s) => s.lanes.vehicle);
   const openStation = useConsole((s) => s.openStation);
 
   // Worst-first is already the lane's order, so the head of it is the answer.
-  const next = lane.filter((s) => s.breakdown.needsTruck).slice(0, 5);
+  const next = lane.filter((s) => s.breakdown.needsVehicle).slice(0, 5);
 
   return (
     <Card className="overflow-hidden">
@@ -415,13 +415,13 @@ function NextUp() {
 
       {next.length === 0 ? (
         <p className="px-3.5 pb-4 text-[11px] text-[var(--color-ink-3)]">
-          Nothing is above the {NEEDS_TRUCK_THRESHOLD}-point dispatch threshold right now.
+          Nothing is above the {NEEDS_VEHICLE_THRESHOLD}-point dispatch threshold right now.
         </p>
       ) : (
         <ul className="px-3.5 pb-3">
           {next.map((entry, i) => {
             const { station, breakdown } = entry;
-            const action = truckAction(breakdown);
+            const action = vehicleAction(breakdown);
             return (
               <li
                 key={station.stationId}
@@ -448,7 +448,7 @@ function NextUp() {
                           ? `drop ${action.bikes} bikes`
                           : action.kind === 'collect'
                             ? `collect ${action.bikes} bikes`
-                            : 'no truck can fix'}
+                            : 'no vehicle can fix'}
                       </span>
                     </span>
                   </span>
@@ -461,7 +461,7 @@ function NextUp() {
 
       <div className="border-t border-[var(--color-line-soft)] px-3.5 py-2">
         <FixtureNote>
-          Truck positions, ETAs and assignments are fixtures — the public feed has no vehicles.
+          Vehicle positions, ETAs and assignments are fixtures — the public feed has no vehicles.
           These targets are live.
         </FixtureNote>
       </div>
@@ -471,40 +471,40 @@ function NextUp() {
 
 /* -------------------------------------------------------------------------- */
 
-function TruckGlyph({ size = 34 }: { size?: number }) {
+function VehicleGlyph({ size = 34 }: { size?: number }) {
   return (
     <span
       aria-hidden="true"
       className="flex shrink-0 items-center justify-center rounded-lg bg-[var(--color-sunken)] text-[var(--color-ink-2)]"
       style={{ width: size, height: size }}
     >
-      <Icon name="truck" size={size * 0.5} />
+      <Icon name="vehicle" size={size * 0.5} />
     </span>
   );
 }
 
-function ExpandedTruck({ truck }: { truck: Truck }) {
+function ExpandedVehicle({ vehicle }: { vehicle: Vehicle }) {
   // An assignment made from the queue outranks the fixture task — otherwise
-  // dispatching a truck here would change nothing on the page about trucks.
-  const assigned = useConsole((s) => s.assignments[truck.id]);
-  const state = effectiveState(truck, assigned);
-  const tone = TRUCK_STATE_TONE[state];
+  // dispatching a vehicle here would change nothing on the page about vehicles.
+  const assigned = useConsole((s) => s.assignments[vehicle.id]);
+  const state = effectiveState(vehicle, assigned);
+  const tone = VEHICLE_STATE_TONE[state];
 
   return (
     <Card className="border-[var(--color-ink)]">
       <div className="flex items-center gap-3 px-3.5 pt-3.5 pb-3">
-        <TruckGlyph />
+        <VehicleGlyph />
         <div className="min-w-0 flex-1">
-          <p className="num text-[13px] font-semibold text-[var(--color-ink)]">Truck {truck.id}</p>
+          <p className="num text-[13px] font-semibold text-[var(--color-ink)]">Vehicle {vehicle.id}</p>
           <p className="mt-px text-[11px]" style={{ color: TONE[tone].fg }}>
-            {TRUCK_STATE_LABEL[state]}
-            {!assigned && truck.eta && ` · ${truck.eta}`}
+            {VEHICLE_STATE_LABEL[state]}
+            {!assigned && vehicle.eta && ` · ${vehicle.eta}`}
             {/* The expanded card is still a row in one of the three groups, and
                 it was the only one not carrying the value the grouping is made
-                of — so the focused truck looked like it had no availability. */}
+                of — so the focused vehicle looked like it had no availability. */}
             <span className="num ml-2 text-[10px] text-[var(--color-ink-3)]">
-              {assigned || truck.freeInMin > 0
-                ? `free ${formatFreeIn(assigned ? Math.max(truck.freeInMin, 30) : truck.freeInMin)}`
+              {assigned || vehicle.freeInMin > 0
+                ? `free ${formatFreeIn(assigned ? Math.max(vehicle.freeInMin, 30) : vehicle.freeInMin)}`
                 : 'free now'}
             </span>
           </p>
@@ -513,9 +513,9 @@ function ExpandedTruck({ truck }: { truck: Truck }) {
         <div className="w-[168px] shrink-0">
           <p className="eyebrow text-right text-[10px]">Capacity</p>
           <div className="mt-1.5 flex items-center gap-2">
-            <Bar value={truck.load / truck.capacity} tone="ok" height={5} />
+            <Bar value={vehicle.load / vehicle.capacity} tone="ok" height={5} />
             <span className="num shrink-0 text-[11px] font-semibold text-[var(--color-ink)]">
-              {truck.load}/{truck.capacity}
+              {vehicle.load}/{vehicle.capacity}
             </span>
           </div>
         </div>
@@ -532,10 +532,10 @@ function ExpandedTruck({ truck }: { truck: Truck }) {
           </p>
         ) : (
           <p className="text-[11px] text-[var(--color-ink-2)]">
-            <span className="font-semibold text-[var(--color-ink)]">Active:</span> {truck.active}
+            <span className="font-semibold text-[var(--color-ink)]">Active:</span> {vehicle.active}
           </p>
         )}
-        <Button size="sm" notBuilt="Would re-task, recall, or take this truck off shift.">
+        <Button size="sm" notBuilt="Would re-task, recall, or take this vehicle off shift.">
           Options
         </Button>
       </div>
@@ -557,9 +557,9 @@ const GROUP_TONE: Record<Availability, Tone> = {
  * Three groups instead of eight rows.
  *
  * The list was in fixture-declaration order, which looked state-sorted by
- * coincidence and would have shuffled the moment anyone added a truck. Worse,
- * the page opens with a red callout about idle trucks and then drew those exact
- * trucks with `tone="mute"` — the quietest rows on the screen were the ones the
+ * coincidence and would have shuffled the moment anyone added a vehicle. Worse,
+ * the page opens with a red callout about idle vehicles and then drew those exact
+ * vehicles with `tone="mute"` — the quietest rows on the screen were the ones the
  * headline was shouting about.
  *
  * Free-now is therefore the loud group and sits first, committed is collapsed,
@@ -575,7 +575,7 @@ function FleetByAvailability({
   groups: FleetGroups;
   focused: string;
   onFocus: (id: string) => void;
-  stateOf: (t: Truck) => TruckState;
+  stateOf: (t: Vehicle) => VehicleState;
 }) {
   const [showCommitted, setShowCommitted] = useState(false);
   const order: Availability[] = ['free-now', 'free-shortly', 'committed'];
@@ -616,17 +616,17 @@ function FleetByAvailability({
             {!collapsed && (
               <ul className="flex flex-col gap-2">
                 {rows.map((row) =>
-                  row.truck.id === focused ? (
-                    <li key={row.truck.id}>
-                      <ExpandedTruck truck={row.truck} />
+                  row.vehicle.id === focused ? (
+                    <li key={row.vehicle.id}>
+                      <ExpandedVehicle vehicle={row.vehicle} />
                     </li>
                   ) : (
-                    <li key={row.truck.id}>
-                      <CollapsedTruck
-                        truck={row.truck}
+                    <li key={row.vehicle.id}>
+                      <CollapsedVehicle
+                        vehicle={row.vehicle}
                         row={row}
-                        state={stateOf(row.truck)}
-                        onOpen={() => onFocus(row.truck.id)}
+                        state={stateOf(row.vehicle)}
+                        onOpen={() => onFocus(row.vehicle.id)}
                       />
                     </li>
                   ),
@@ -641,9 +641,9 @@ function FleetByAvailability({
 }
 
 /**
- * The suggested job on a free truck's card.
+ * The suggested job on a free vehicle's card.
  *
- * The two panels were adjacent and unrelated: a list of trucks with nothing to
+ * The two panels were adjacent and unrelated: a list of vehicles with nothing to
  * do beside a list of stations needing one, and a person in the middle doing
  * the join by eye. The pairing shows its reasoning because a suggestion a
  * dispatcher cannot audit is one they will either follow blindly or ignore
@@ -652,11 +652,11 @@ function FleetByAvailability({
 function MatchRow({ row, onAssign }: { row: FleetRow; onAssign: () => void }) {
   const { match } = row;
   if (!match) {
-    const empty = row.truck.load === 0;
+    const empty = row.vehicle.load === 0;
     return (
       <p className="border-t border-[var(--color-line-soft)] px-3.5 py-2 text-[10px] text-[var(--color-ink-3)]">
         {empty
-          ? 'Nothing to suggest — this truck is empty, so it can only collect, and every open job nearby needs bikes dropped. Load it at a depot first.'
+          ? 'Nothing to suggest — this vehicle is empty, so it can only collect, and every open job nearby needs bikes dropped. Load it at a depot first.'
           : 'Nothing to suggest — it is full, so it can only drop, and the open jobs nearby need collecting.'}
       </p>
     );
@@ -680,22 +680,22 @@ function MatchRow({ row, onAssign }: { row: FleetRow; onAssign: () => void }) {
           · {minutes} min away · {match.why}
         </span>
       </span>
-      <Button size="sm" variant="dark" icon="truck" onClick={onAssign}>
+      <Button size="sm" variant="dark" icon="vehicle" onClick={onAssign}>
         Assign
       </Button>
     </div>
   );
 }
 
-function CollapsedTruck({
-  truck,
+function CollapsedVehicle({
+  vehicle,
   row,
   state,
   onOpen,
 }: {
-  truck: Truck;
+  vehicle: Vehicle;
   row: FleetRow;
-  state: TruckState;
+  state: VehicleState;
   onOpen: () => void;
 }) {
   const openStation = useConsole((s) => s.openStation);
@@ -707,17 +707,17 @@ function CollapsedTruck({
         width={300}
         content={
           <>
-            <TipTitle>Truck {truck.id}</TipTitle>
+            <TipTitle>Vehicle {vehicle.id}</TipTitle>
             <TipBody>
               <span className="block">
-                {TRUCK_STATE_LABEL[state]} · free {formatFreeIn(row.freeInMin)}
+                {VEHICLE_STATE_LABEL[state]} · free {formatFreeIn(row.freeInMin)}
               </span>
               <span className="mt-1 block">
-                Carrying {truck.load} of {truck.capacity} · {truck.capacity - truck.load} slots free
+                Carrying {vehicle.load} of {vehicle.capacity} · {vehicle.capacity - vehicle.load} slots free
               </span>
-              <span className="mt-1 block">At {truck.where}</span>
-              <span className="mt-1 block">Home depot {truck.depot}</span>
-              {truck.when && <span className="mt-1 block">{truck.when}</span>}
+              <span className="mt-1 block">At {vehicle.where}</span>
+              <span className="mt-1 block">Home depot {vehicle.depot}</span>
+              {vehicle.when && <span className="mt-1 block">{vehicle.when}</span>}
             </TipBody>
           </>
         }
@@ -727,11 +727,11 @@ function CollapsedTruck({
           onClick={onOpen}
           className="flex w-full cursor-pointer items-center gap-3 px-3.5 py-2.5 text-left"
         >
-          <TruckGlyph size={28} />
+          <VehicleGlyph size={28} />
           <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
-            Truck {truck.id}
+            Vehicle {vehicle.id}
           </span>
-          <TruckStateChip state={state} />
+          <VehicleStateChip state={state} />
 
           {/* The free-at value, beside the state rather than instead of it.
               "En route" says what it is doing; only the minutes say whether
@@ -741,17 +741,17 @@ function CollapsedTruck({
           </span>
 
           <span className="ml-auto flex items-center gap-3">
-            {/* Load as a number, not only a bar. An idle truck carrying 26 and
-                an idle truck carrying none are different assets, and two short
+            {/* Load as a number, not only a bar. An idle vehicle carrying 26 and
+                an idle vehicle carrying none are different assets, and two short
                 bars at a glance are not. */}
             <span className="num shrink-0 text-[10px] text-[var(--color-ink-2)]">
-              {truck.load}
-              <span className="text-[var(--color-ink-3)]">/{truck.capacity}</span>
+              {vehicle.load}
+              <span className="text-[var(--color-ink-3)]">/{vehicle.capacity}</span>
             </span>
             <span className="w-[70px] shrink-0">
               <Bar
-                value={truck.capacity > 0 ? truck.load / truck.capacity : 0}
-                tone={truck.load === 0 ? 'mute' : 'ok'}
+                value={vehicle.capacity > 0 ? vehicle.load / vehicle.capacity : 0}
+                tone={vehicle.load === 0 ? 'mute' : 'ok'}
                 height={4}
               />
             </span>
@@ -774,7 +774,7 @@ function FocusCard() {
   return (
     <Card>
       <CardHead
-        title={`Active focus: ${TRUCK_FOCUS.id}`}
+        title={`Active focus: ${VEHICLE_FOCUS.id}`}
         right={
           <span className="num text-[10px] tracking-[0.08em] uppercase" style={{ color: TONE.ok.fg }}>
             Live sync
@@ -785,14 +785,14 @@ function FocusCard() {
       <ol className="px-3.5 pt-1 pb-4">
         <TimelineStep
           eyebrow="Current task"
-          title={TRUCK_FOCUS.current.title}
-          where={TRUCK_FOCUS.current.where}
+          title={VEHICLE_FOCUS.current.title}
+          where={VEHICLE_FOCUS.current.where}
           filled
         />
         <TimelineStep
-          eyebrow={TRUCK_FOCUS.next.in}
-          title={TRUCK_FOCUS.next.title}
-          where={TRUCK_FOCUS.next.where}
+          eyebrow={VEHICLE_FOCUS.next.in}
+          title={VEHICLE_FOCUS.next.title}
+          where={VEHICLE_FOCUS.next.where}
         />
       </ol>
     </Card>
@@ -800,7 +800,7 @@ function FocusCard() {
 }
 
 /**
- * A step on the truck's run. The rule connecting the dots is drawn on the item
+ * A step on the vehicle's run. The rule connecting the dots is drawn on the item
  * rather than between them so the last step's line ends at its own dot.
  */
 function TimelineStep({

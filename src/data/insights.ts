@@ -32,7 +32,7 @@ export interface RebalanceDemand {
 /**
  * A balanced station is half full: it can serve a rider who wants a bike and a
  * rider who wants a dock. Distance from that midpoint, summed over everything
- * at or above the truck threshold, is the outstanding workload in bikes.
+ * at or above the vehicle threshold, is the outstanding workload in bikes.
  *
  * Measured against slots actually reported usable rather than the nameplate,
  * for the same reason the fill ratio is — 870 stations disagree with their own
@@ -45,7 +45,7 @@ export function rebalanceDemand(lane: ScoredStation[]): RebalanceDemand {
   let stationsOver = 0;
 
   for (const { breakdown } of lane) {
-    if (!breakdown.needsTruck) continue;
+    if (!breakdown.needsVehicle) continue;
 
     const { bikes, usableSlots } = breakdown.fill;
     if (usableSlots === 0) continue;
@@ -70,12 +70,12 @@ export function rebalanceDemand(lane: ScoredStation[]): RebalanceDemand {
 }
 
 /* ---------------------------------------------------------------------------
-   What a truck should actually do when it arrives.
+   What a vehicle should actually do when it arrives.
 --------------------------------------------------------------------------- */
 
-export interface TruckAction {
+export interface VehicleAction {
   kind: 'drop' | 'collect' | 'mechanic' | 'none';
-  /** Bikes to move. Zero for the non-truck kinds. */
+  /** Bikes to move. Zero for the non-vehicle kinds. */
   bikes: number;
 }
 
@@ -90,7 +90,7 @@ export interface TruckAction {
  * The target is the same midpoint `rebalanceDemand` uses, so the per-station
  * numbers sum to the network figure.
  */
-export function truckAction(breakdown: ScoredStation['breakdown']): TruckAction {
+export function vehicleAction(breakdown: ScoredStation['breakdown']): VehicleAction {
   if (breakdown.signal === 'outage') return { kind: 'mechanic', bikes: 0 };
 
   const { bikes, usableSlots } = breakdown.fill;
@@ -156,21 +156,21 @@ export function capacityLoss(lane: ScoredStation[], networkDocks: number): Capac
 export interface BoroughRollup {
   borough: string;
   stations: number;
-  needsTruck: number;
+  needsVehicle: number;
   /** Mean fill across stations that report usable slots, 0–1. Null if none. */
   avgFill: number | null;
-  /** needsTruck / stations — how much of the borough is in trouble. */
+  /** needsVehicle / stations — how much of the borough is in trouble. */
   pressure: number;
 }
 
 export function boroughRollup(scored: ScoredStation[]): BoroughRollup[] {
-  const groups = new Map<string, { stations: number; needsTruck: number; fills: number[] }>();
+  const groups = new Map<string, { stations: number; needsVehicle: number; fills: number[] }>();
 
   for (const s of scored) {
     const key = s.station.borough;
-    const g = groups.get(key) ?? { stations: 0, needsTruck: 0, fills: [] };
+    const g = groups.get(key) ?? { stations: 0, needsVehicle: 0, fills: [] };
     g.stations++;
-    if (s.breakdown.needsTruck) g.needsTruck++;
+    if (s.breakdown.needsVehicle) g.needsVehicle++;
     if (s.breakdown.fill.ratio !== null) g.fills.push(s.breakdown.fill.ratio);
     groups.set(key, g);
   }
@@ -179,9 +179,9 @@ export function boroughRollup(scored: ScoredStation[]): BoroughRollup[] {
     .map(([borough, g]) => ({
       borough,
       stations: g.stations,
-      needsTruck: g.needsTruck,
+      needsVehicle: g.needsVehicle,
       avgFill: g.fills.length > 0 ? g.fills.reduce((a, b) => a + b, 0) / g.fills.length : null,
-      pressure: g.stations > 0 ? g.needsTruck / g.stations : 0,
+      pressure: g.stations > 0 ? g.needsVehicle / g.stations : 0,
     }))
     .sort((a, b) => b.stations - a.stations);
 }
@@ -205,7 +205,7 @@ export interface OffQueueMatches {
 /**
  * Stations matching the search that the Rebalancing board structurally cannot show.
  *
- * The queue pools the truck lane only — by design, since a dead station has no
+ * The queue pools the vehicle lane only — by design, since a dead station has no
  * business in a rebalancing list. But the consequence was a search box that
  * silently returns nothing for perfectly real stations, and the reader has no
  * way to tell "no such station" from "that one is on a different screen".
@@ -275,7 +275,7 @@ export function liveZones(scored: ScoredStation[]): Zone[] {
 }
 
 export interface ZoneStats extends Zone {
-  needsTruck: number;
+  needsVehicle: number;
   avgFill: number | null;
   /** Worst-first, already ordered by the store. */
   ranked: ScoredStation[];
@@ -295,9 +295,9 @@ export function zoneStats(scored: ScoredStation[], slug: string): ZoneStats | nu
     slug,
     name: inZone[0]!.station.borough,
     stations: inZone.length,
-    needsTruck: inZone.filter((s) => s.breakdown.needsTruck).length,
+    needsVehicle: inZone.filter((s) => s.breakdown.needsVehicle).length,
     avgFill: fills.length > 0 ? fills.reduce((a, b) => a + b, 0) / fills.length : null,
-    ranked: inZone.filter((s) => s.breakdown.needsTruck),
+    ranked: inZone.filter((s) => s.breakdown.needsVehicle),
 
     // Counted through `laneOf`, not by re-testing the underlying flags. A
     // not-installed station can carry `notReporting` too, and testing that flag

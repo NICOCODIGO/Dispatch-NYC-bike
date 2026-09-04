@@ -11,10 +11,10 @@ import {
   SOURCE_TONE,
   sourceTally,
 } from '../content/provenance';
-import { NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import { useDispatch } from '../store/useDispatch';
 import { rebalanceDemand } from '../data/insights';
-import { TRUCKS } from '../mock/data';
+import { VEHICLES } from '../mock/data';
 
 /**
  * Every constant the score is built from, and what moving one would do.
@@ -39,14 +39,14 @@ const SLIDER_MAX = 85;
 
 export function MethodSheet({ onClose }: { onClose: () => void }) {
   const scored = useDispatch((s) => s.scored);
-  const lane = useDispatch((s) => s.lanes.truck);
+  const lane = useDispatch((s) => s.lanes.vehicle);
   const panelRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   // Local only. Editing here previews a consequence; it does not rewrite the
   // model, because the scorer is a pure module the worker also imports and a
   // console session must not be able to fork it.
-  const [threshold, setThreshold] = useState(NEEDS_TRUCK_THRESHOLD);
+  const [threshold, setThreshold] = useState(NEEDS_VEHICLE_THRESHOLD);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -66,7 +66,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
           s.breakdown.scored &&
           !s.breakdown.staleness.notReporting &&
           s.breakdown.signal !== 'outage' &&
-          s.breakdown.score >= NEEDS_TRUCK_THRESHOLD,
+          s.breakdown.score >= NEEDS_VEHICLE_THRESHOLD,
       ).length,
     [scored],
   );
@@ -83,7 +83,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
     [scored, threshold],
   );
 
-  const changed = threshold !== NEEDS_TRUCK_THRESHOLD;
+  const changed = threshold !== NEEDS_VEHICLE_THRESHOLD;
 
   /**
    * What the fleet can actually absorb.
@@ -94,7 +94,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
    * fleet page would be worse than no preview.
    */
   const demand = useMemo(() => rebalanceDemand(lane), [lane]);
-  const activeCapacity = TRUCKS.filter((t) => t.state !== 'idle').reduce(
+  const activeCapacity = VEHICLES.filter((t) => t.state !== 'idle').reduce(
     (sum, t) => sum + t.capacity,
     0,
   );
@@ -107,7 +107,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
    * worst station in the network today scores 88. A slider that ran to 100
    * therefore spent its last two stops showing "0 stations", which reads as a
    * broken control rather than as a fact about the model. The floor is the same
-   * problem mirrored: every station in the truck lane already clears 40, so
+   * problem mirrored: every station in the vehicle lane already clears 40, so
    * every position below it showed an identical number.
    */
   const maxScore = useMemo(
@@ -202,9 +202,9 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
             <p className="mt-2 text-[11px] leading-relaxed text-[var(--color-ink-2)]">
               {changed ? (
                 <>
-                  Threshold {NEEDS_TRUCK_THRESHOLD} → {threshold}:{' '}
+                  Threshold {NEEDS_VEHICLE_THRESHOLD} → {threshold}:{' '}
                   <strong className="font-semibold text-[var(--color-ink)]">
-                    {atCurrent.toLocaleString('en-US')} stations needing a truck becomes{' '}
+                    {atCurrent.toLocaleString('en-US')} stations needing a vehicle becomes{' '}
                     {atProposed.toLocaleString('en-US')}
                   </strong>
                   {atProposed < atCurrent
@@ -214,7 +214,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
               ) : (
                 <>
                   {atCurrent.toLocaleString('en-US')} stations currently sit at or above{' '}
-                  {NEEDS_TRUCK_THRESHOLD}. Drag to see what a different line would cost.
+                  {NEEDS_VEHICLE_THRESHOLD}. Drag to see what a different line would cost.
                 </>
               )}
             </p>
@@ -230,7 +230,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
             )}
             {threshold <= SLIDER_MIN && (
               <p className="mt-2 text-[10px] text-[var(--color-ink-3)] italic">
-                Stops at {SLIDER_MIN}. Every station already in the truck lane scores above this, so
+                Stops at {SLIDER_MIN}. Every station already in the vehicle lane scores above this, so
                 lowering the line further adds nobody — it just stops excluding anyone.
               </p>
             )}
@@ -245,11 +245,11 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
               <strong className="font-semibold text-[var(--color-ink)]">
                 The line is not what limits you — capacity is.
               </strong>{' '}
-              At {NEEDS_TRUCK_THRESHOLD}, {atCurrent.toLocaleString('en-US')} stations qualify, and
+              At {NEEDS_VEHICLE_THRESHOLD}, {atCurrent.toLocaleString('en-US')} stations qualify, and
               clearing them means moving {demand.relocatable.toLocaleString('en-US')} bikes —{' '}
               <span className="num">{runs}</span> full runs for the {activeCapacity} bikes of active
-              truck capacity. A shift does not contain {runs} runs. Anywhere between{' '}
-              {NEEDS_TRUCK_THRESHOLD} and 80 the queue is longer than the fleet can reach either
+              vehicle capacity. A shift does not contain {runs} runs. Anywhere between{' '}
+              {NEEDS_VEHICLE_THRESHOLD} and 80 the queue is longer than the fleet can reach either
               way, so moving the line changes the number you report, not the work that gets done.
               Past about 80 it finally binds — and that is the only range where this slider is a
               decision rather than a headline.
@@ -268,7 +268,7 @@ export function MethodSheet({ onClose }: { onClose: () => void }) {
                 Apply
               </button>
               <p className="text-[10px] leading-snug text-[var(--color-ink-3)]">
-                Not wired up. The live board ranks on {NEEDS_TRUCK_THRESHOLD} whatever this slider
+                Not wired up. The live board ranks on {NEEDS_VEHICLE_THRESHOLD} whatever this slider
                 says. Changing it for real means editing{' '}
                 <code className="num text-[10px]">src/model/score.ts</code>, which the scheduled
                 worker imports too — so the console and the worker can never disagree about what

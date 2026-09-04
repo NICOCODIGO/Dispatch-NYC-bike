@@ -26,7 +26,7 @@ import {
   runSummary,
   snapshotOf,
   statsByDepot,
-  statsByTruck,
+  statsByVehicle,
   statsOverall,
   type DispatchRun,
   type RunOutcome,
@@ -35,7 +35,7 @@ import { focusHref } from '../state/useFocus';
 import { Link } from 'react-router-dom';
 
 /**
- * Whether the trucks we sent achieved anything.
+ * Whether the vehicles we sent achieved anything.
  *
  * The recovery figure on Analytics measures the *network* — it counts any
  * flagged station that improved, including ones that fixed themselves when
@@ -65,7 +65,7 @@ export function DispatchHistory() {
   const open = runs.filter((r) => !r.after);
   const done = runs.filter((r) => r.after);
   const overall = statsOverall(runs);
-  const byTruck = statsByTruck(runs);
+  const byVehicle = statsByVehicle(runs);
   const byDepot = statsByDepot(runs);
 
   const finish = (run: DispatchRun) => {
@@ -77,7 +77,7 @@ export function DispatchHistory() {
     <>
       <PageHeader
         title="Dispatch History"
-        subtitle="Every truck sent, what was ordered, and what the feed said afterwards. The only measure of whether dispatching works."
+        subtitle="Every vehicle sent, what was ordered, and what the feed said afterwards. The only measure of whether dispatching works."
       />
 
       <PageBody>
@@ -96,7 +96,7 @@ export function DispatchHistory() {
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr>
-                  <Th width={80}>Truck</Th>
+                  <Th width={80}>Vehicle</Th>
                   <Th>Station</Th>
                   <Th width={150}>Ordered</Th>
                   <Th width={130}>Elapsed</Th>
@@ -113,7 +113,7 @@ export function DispatchHistory() {
                   >
                     <Td>
                       <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
-                        {run.truckId}
+                        {run.vehicleId}
                       </span>
                       <span className="block text-[10px] text-[var(--color-ink-3)]">
                         {run.depot}
@@ -166,7 +166,7 @@ export function DispatchHistory() {
           <CardHead title={`Completed runs (${done.length})`} />
           {done.length === 0 ? (
             <p className="border-t border-[var(--color-line)] px-4 py-10 text-center text-[12px] text-[var(--color-ink-2)]">
-              No run has finished yet. Dispatch a truck from the queue, then mark it done — or
+              No run has finished yet. Dispatch a vehicle from the queue, then mark it done — or
               leave it and it closes itself when the ETA lapses.
             </p>
           ) : (
@@ -174,7 +174,7 @@ export function DispatchHistory() {
               <thead>
                 <tr>
                   <Th width={110}>Outcome</Th>
-                  <Th width={80}>Truck</Th>
+                  <Th width={80}>Vehicle</Th>
                   <Th>Station</Th>
                   <Th>Before → after</Th>
                   <Th width={130} align="right">
@@ -211,7 +211,7 @@ export function DispatchHistory() {
                       </Td>
                       <Td>
                         <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
-                          {run.truckId}
+                          {run.vehicleId}
                         </span>
                         <span className="block text-[10px] text-[var(--color-ink-3)]">
                           {run.depot}
@@ -260,7 +260,7 @@ export function DispatchHistory() {
         </Card>
 
         <div className="mt-3.5 grid gap-3.5 lg:grid-cols-2">
-          <StatsTable title="By truck" label="Truck" stats={byTruck} />
+          <StatsTable title="By vehicle" label="Vehicle" stats={byVehicle} />
           <StatsTable title="By depot" label="Depot" stats={byDepot} />
         </div>
 
@@ -286,9 +286,9 @@ function Headline({
   if (overall.runs === 0) {
     return (
       <Finding
-        icon="truck"
+        icon="vehicle"
         tone="mute"
-        headline="No trucks have been sent yet."
+        headline="No vehicles have been sent yet."
         detail="Dispatch one from the rebalancing board and this becomes a record of whether it worked — how much of the ordered quantity actually moved, and whether the station recovered."
       />
     );
@@ -299,7 +299,7 @@ function Headline({
 
   return (
     <Finding
-      icon="truck"
+      icon="vehicle"
       tone={tone}
       headline={
         overall.completed === 0 ? (
@@ -314,7 +314,7 @@ function Headline({
       detail={
         overall.completed === 0
           ? 'Outcomes appear once a run is marked done, or once its ETA lapses and the board closes it against the current reading.'
-          : `Crews moved ${overall.moved} of the ${overall.ordered} bikes ordered. The gap between what is asked for and what arrives is the realization rate, and it is the number a supervisor should watch — a truck that reliably delivers 60% of an order is not a truck you can plan around.`
+          : `Crews moved ${overall.moved} of the ${overall.ordered} bikes ordered. The gap between what is asked for and what arrives is the realization rate, and it is the number a supervisor should watch — a vehicle that reliably delivers 60% of an order is not a vehicle you can plan around.`
       }
       stats={[
         { label: 'in flight', value: openCount },
@@ -398,8 +398,8 @@ export function OutcomeChip({ run }: { run: DispatchRun }) {
   if (!outcome) {
     return (
       <span className="inline-flex items-center gap-1 text-[10px]" style={{ color: TONE.warn.fg }}>
-        <Icon name="truck" size={10} />
-        {run.truckId} · {elapsedMinutes(run)}m
+        <Icon name="vehicle" size={10} />
+        {run.vehicleId} · {elapsedMinutes(run)}m
       </span>
     );
   }
@@ -408,7 +408,7 @@ export function OutcomeChip({ run }: { run: DispatchRun }) {
       className="inline-flex items-center gap-1 text-[10px]"
       style={{ color: TONE[OUTCOME_TONE[outcome]].fg }}
     >
-      <Icon name="truck" size={10} />
+      <Icon name="vehicle" size={10} />
       {OUTCOME_LABEL[outcome]}
     </span>
   );

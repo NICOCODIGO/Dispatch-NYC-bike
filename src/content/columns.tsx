@@ -1,6 +1,6 @@
 import type { ColumnHelpSpec } from '../ui/primitives';
 import type { Tone } from '../ui/tone';
-import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD, STALENESS_MAX_MINUTES } from '../model/score';
+import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD, STALENESS_MAX_MINUTES } from '../model/score';
 
 /**
  * The four urgency bands, defined once.
@@ -17,13 +17,13 @@ import { CRITICAL_THRESHOLD, NEEDS_TRUCK_THRESHOLD, STALENESS_MAX_MINUTES } from
  * does not carry the colors is a key to something else.
  */
 export const SCORE_BANDS: { label: string; gloss: string; tone: Tone }[] = [
-  { label: `${CRITICAL_THRESHOLD}–100`, gloss: 'critical — send a truck now', tone: 'empty' },
+  { label: `${CRITICAL_THRESHOLD}–100`, gloss: 'critical — send a vehicle now', tone: 'empty' },
   {
-    label: `${NEEDS_TRUCK_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`,
+    label: `${NEEDS_VEHICLE_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`,
     gloss: 'at or above the dispatch threshold',
     tone: 'warn',
   },
-  { label: `0–${NEEDS_TRUCK_THRESHOLD - 1}`, gloss: 'drifting — still serving riders', tone: 'ok' },
+  { label: `0–${NEEDS_VEHICLE_THRESHOLD - 1}`, gloss: 'drifting — still serving riders', tone: 'ok' },
   { label: '?', gloss: `silent over ${STALENESS_MAX_MINUTES} min — not scored`, tone: 'mute' },
 ];
 
@@ -49,12 +49,12 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
     ),
     good: (
       <>
-        At or above {NEEDS_TRUCK_THRESHOLD} the board says send a truck. Below that a station is
+        At or above {NEEDS_VEHICLE_THRESHOLD} the board says send a vehicle. Below that a station is
         drifting but still serving riders.
         <br />
         <br />
         <strong>What it does not measure:</strong> broken bikes, dead docks, flat station
-        batteries, or reported faults. None of those are inputs. A truck full of bikes cannot fix
+        batteries, or reported faults. None of those are inputs. A vehicle full of bikes cannot fix
         any of them, so they are ranked separately on Maintenance Operations and a station whose
         hardware has failed outright is routed off this board entirely.
         <br />
@@ -85,14 +85,14 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
   },
 
   status: {
-    what: 'How the station is failing, and what a truck would do about it. These four are the only values that appear here — a truck can fix all of them.',
+    what: 'How the station is failing, and what a vehicle would do about it. These four are the only values that appear here — a vehicle can fix all of them.',
     good: 'Outage and Stale stations are routed off this queue entirely, because no amount of moving bikes helps. Search still finds them and will point you to the right screen.',
     values: [
-      { label: 'Empty', gloss: 'no bikes at all — nobody can rent' },
-      { label: 'Low', gloss: 'under 15% of slots hold a bike — nearly out' },
-      { label: 'Flooded', gloss: 'over 85% full — nearly out of docks' },
-      { label: 'Full', gloss: 'no free docks — nobody can return' },
-      { label: 'Outage →', gloss: 'switched off — lives on Maintenance Ops' },
+      { label: 'Empty', gloss: 'no bikes at all' },
+      { label: 'Low', gloss: 'under 15% of slots hold a bike' },
+      { label: 'Flooded', gloss: 'over 85% full' },
+      { label: 'Full', gloss: 'no free docks' },
+      { label: 'Outage →', gloss: 'switched off' },
       {
         label: 'Stale →',
         gloss: `silent over ${STALENESS_MAX_MINUTES} min — lives on Unverified Stations`,
@@ -130,13 +130,13 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
   },
 
   pressure: {
-    what: 'The share of a borough’s stations that need a truck right now.',
+    what: 'The share of a borough’s stations that need a vehicle right now.',
     good: 'Low is calm. High means the trouble is concentrated there, which is where the next vehicle should go.',
   },
 
   urgency: {
     what: 'The same 0–100 urgency score the rebalancing board ranks by, for stations in this zone.',
-    good: `At or above ${NEEDS_TRUCK_THRESHOLD} means send a truck.`,
+    good: `At or above ${NEEDS_VEHICLE_THRESHOLD} means send a vehicle.`,
   },
 
   fillStatus: {
@@ -154,7 +154,7 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
     good: 'Nothing in the data changes this, and it never affects the score. It is a note to yourself and to whoever has the next shift.',
     values: [
       { label: 'Not set', gloss: 'nobody has decided about this one yet' },
-      { label: 'Dispatched', gloss: 'a truck is on its way' },
+      { label: 'Dispatched', gloss: 'a vehicle is on its way' },
       { label: 'Watching', gloss: 'aware of it, deciding' },
       { label: 'Snoozed', gloss: 'deliberately skipped — hidden from the default view' },
       { label: 'Known issue', gloss: 'understood and not worth a trip' },

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { PageBody, PageHeader } from '../shell/AppShell';
 import { Icon } from '../ui/Icon';
@@ -16,7 +16,6 @@ import {
   SearchInput,
   Select,
   SkeletonRows,
-  StatCard,
   StatusPill,
   Td,
   Th,
@@ -27,7 +26,6 @@ import { OutcomeChip } from './DispatchHistory';
 import { latestRunFor, outcomeOf, type DispatchRun } from '../data/dispatchRun';
 import { MethodSheet } from './MethodSheet';
 import { COLUMN_HELP } from '../content/columns';
-import { PageGuide } from '../ui/PageGuide';
 import { SituationFinding } from '../content/situation';
 import { matchesOutsideQueue, networkDocks, rebalanceDemand } from '../data/insights';
 import { SHIFTS, shiftCapacity } from '../model/roster';
@@ -38,25 +36,27 @@ import { DISPOSITION_LABEL, useConsole, type Disposition } from '../state/useCon
 import { toStationRow } from '../data/adapt';
 import type { StationRow } from '../data/stationRow';
 import { BOROUGHS, type Borough } from '../data/boroughs';
-import { NEEDS_TRUCK_THRESHOLD, type StationCategory } from '../model/score';
+import { NEEDS_VEHICLE_THRESHOLD, type StationCategory } from '../model/score';
 import { applyFilters } from '../model/queue';
+import { SERVICE_TARGET, serviceLevel, targetCutIndex } from '../model/service';
+import { QueueStats } from './QueueStats';
 import { FEED_STALE_MS, useDispatch, type SortKey } from '../store/useDispatch';
 import { formatAgo, formatClock } from '../lib/time';
 import { durationIndex } from '../data/duration';
 import { useSessionHistory } from '../state/useHistory';
 import { useArrival, useScrollToFocus } from '../state/useFocus';
-import { ROSTER, TRUCKS, TRUCK_STATE_LABEL, TRUCK_STATE_TONE } from '../mock/data';
+import { ROSTER, VEHICLES, VEHICLE_STATE_LABEL, VEHICLE_STATE_TONE } from '../mock/data';
 import { cn } from '../lib/cn';
 
 /**
  * The board, on live data.
  *
- * Rows come from the truck lane in `useDispatch` through the adapter — the
- * stations a truck can actually fix, worst first. Mechanical failures and
+ * Rows come from the vehicle lane in `useDispatch` through the adapter — the
+ * stations a vehicle can actually fix, worst first. Mechanical failures and
  * unreadable stations are not filtered out here; they were routed to their own
  * screens by `triage.ts` before this component ever sees them.
  *
- * The rail's Active Trucks card is still fixtures: GBFS has no vehicles, and
+ * The rail's Active Vehicles card is still fixtures: GBFS has no vehicles, and
  * nothing in the feed can populate it.
  */
 
@@ -80,9 +80,9 @@ const PAGE_SIZE = 12;
 /**
  * The chip row.
  *
- * Four real filters over the truck lane's four categories, and one link.
+ * Four real filters over the vehicle lane's four categories, and one link.
  * "Unverified" cannot filter this table — those stations are excluded from the
- * truck lane by definition — so it goes where they actually live.
+ * vehicle lane by definition — so it goes where they actually live.
  */
 const CHIPS: { key: StationCategory; label: string; tone: Tone }[] = [
   { key: 'empty', label: 'Empty', tone: 'empty' },
@@ -190,13 +190,22 @@ export function PriorityQueue() {
   const openStation = useConsole((s) => s.openStation);
   const openStationId = useConsole((s) => s.openStationId);
   const dispositions = useConsole((s) => s.dispositions);
+  const triage = useConsole((s) => s.triage);
   const runs = useConsole((s) => s.runs);
   const dispatched = useConsole((s) => s.dispatched);
   const [showSnoozed, setShowSnoozed] = useState(false);
   const [method, setMethod] = useState(false);
 
-  const { tracks } = useSessionHistory();
+  const history = useSessionHistory();
+  const { tracks } = history;
   const durations = useMemo(() => durationIndex(tracks), [tracks]);
+
+  // Service level is a fact about the city, so it is computed from every scored
+  // station rather than from the filtered rows. Narrowing the board to one
+  // borough asks a different question; it does not change how served New York
+  // is, and a headline that moved when you typed in the search box would be
+  // measuring the view instead of the network.
+  const service = useMemo(() => (scored.length > 0 ? serviceLevel(scored) : null), [scored]);
 
   // The situation headline — the single worst thing on the network right now,
   // ranked by severity across every lane. See src/model/situation.ts.
@@ -234,7 +243,7 @@ export function PriorityQueue() {
    */
   const allRows: StationRow[] = useMemo(() => {
     const mapped = filtered.map((entry) =>
-      toStationRow(entry, durations.get(entry.station.stationId)),
+      toStationRow(entry, durations.get(entry.station.stationId), situationNow, triage),
     );
 
     if (filters.sortKey !== 'score') return mapped;
@@ -245,7 +254,7 @@ export function PriorityQueue() {
      * A station somebody is already driving to is not less broken, so folding
      * this into urgency would be the same category error as putting dead
      * stations in a rebalancing queue. But it is less *actionable* — and a
-     * station where a truck already went and failed is more so, because the
+     * station where a vehicle already went and failed is more so, because the
      * obvious fix has been tried and did not work.
      */
     const nudge = (r: StationRow) => {
@@ -264,7 +273,7 @@ export function PriorityQueue() {
       if (byResponse !== 0) return byResponse;
       return dir * ((b.score ?? -1) - (a.score ?? -1));
     });
-  }, [filtered, durations, runs, filters.sortKey, filters.sortDir]);
+  }, [filtered, durations, runs, filters.sortKey, filters.sortDir, situationNow, triage]);
 
   // Snoozing is a decision to stop being shown something. Hiding it is the
   // whole point — but silently, with no count and no way back, it becomes a
@@ -283,6 +292,34 @@ export function PriorityQueue() {
       showSnoozed ? allRows : allRows.filter((r) => dispositions[r.id] !== 'snoozed'),
     [allRows, dispositions, showSnoozed],
   );
+
+  /**
+   * Where the target line falls in the queue, or null for no line.
+   *
+   * Only drawn on the canonical board. Sorted by name, or narrowed to one
+   * borough, "everything above this line" stops naming the stations the line is
+   * about — the rows above it would no longer be the worst ones, so clearing
+   * them would not reach the target and the line would be a promise the board
+   * cannot keep.
+   *
+   * A line at the very bottom is dropped too: with nothing below it, it marks
+   * no boundary and just adds a rule to the end of the table.
+   */
+  const canonicalOrder =
+    filters.sortKey === 'score' &&
+    filters.sortDir === 'desc' &&
+    filters.categories.length === 0 &&
+    filters.borough === 'all' &&
+    filters.search.trim() === '';
+
+  const cut = useMemo(() => {
+    if (!canonicalOrder || !service) return null;
+    const at = targetCutIndex(
+      queue.map((r) => !r.serving),
+      service.shortfall,
+    );
+    return at !== null && at < queue.length ? at : null;
+  }, [canonicalOrder, queue, service]);
 
   // Stations the search matched that this queue cannot structurally contain.
   const elsewhere = useMemo(
@@ -326,22 +363,40 @@ export function PriorityQueue() {
 
   const feedIsStale =
     feedUpdatedMs !== null && fetchedAtMs !== null && fetchedAtMs - feedUpdatedMs > FEED_STALE_MS;
-  const firstLoad = phase === 'loading' && lanes.truck.length === 0;
+  const firstLoad = phase === 'loading' && lanes.vehicle.length === 0;
 
   return (
     <>
+      {/* The "How to read this page" banner used to sit below this, in a blue
+          box, saying much the same thing at greater length and in the model's
+          own vocabulary — drift off half-full, weighted capacity, jumping the
+          line. Two explanations of one screen, stacked, the second dismissible
+          and therefore usually dismissed. It is one explanation now, in the
+          masthead where a reader already looks, short enough to finish. */}
       <PageHeader
         title="Rebalancing"
         subtitle={
-          summary
-            ? `Stations too empty or too full for riders — the work a truck fixes by moving bikes, ranked worst-first. ${summary.total.toLocaleString('en-US')} monitored, refreshed every minute.`
-            : 'Reading the live feed…'
+          summary ? (
+            <>
+              <span className="block text-[13px] font-medium text-[var(--color-ink)]">
+                Stations too empty or too full for riders, worst first.
+              </span>
+              <span className="mt-1 block">
+                Every station scores 0–100 for how badly it needs a vehicle. At 55 it is worth the
+                trip. Stations that are broken or have gone quiet are not here — a vehicle cannot fix
+                those, so they have their own screens.
+              </span>
+              <span className="mt-1 block text-[var(--color-ink-3)]">
+                {summary.total.toLocaleString('en-US')} stations · refreshed every minute
+              </span>
+            </>
+          ) : (
+            'Reading the live feed…'
+          )
         }
       />
 
       <PageBody>
-        <PageGuide id="rebalancing" />
-
         {arrival.focus && arrival.from && (
           <ArrivalBanner
             from={arrival.from}
@@ -377,7 +432,7 @@ export function PriorityQueue() {
           <SituationFinding situation={situation} />
         </div>
 
-        <StatRow summary={summary} onClear={resetFilters} onOnly={(c) => setFilters({ categories: [c] })} />
+        <QueueStats summary={summary} service={service} history={history} />
 
         {/* `items-start` matters: grid rows stretch their children by default,
             so the table card grew to match the taller rail beside it and ended
@@ -386,15 +441,27 @@ export function PriorityQueue() {
 
             The rail was 168px in the comp, sized around three-digit fixtures.
             Live figures are four digits and the score-band labels are real
-            sentences, so it needs the room. */}
-        <div className="mt-3 grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
+            sentences, so it needs the room.
+
+            `grid-rows-[auto_1fr]` matters for the same reason, and the bug it
+            fixes only appeared on an empty board. The rail spans both rows; when
+            a grid item spans two `auto` tracks and is taller than their combined
+            content, the excess is split evenly between them. With a full table
+            the table's row is the tallest thing in the grid and there is no
+            excess — but filter the queue down to nothing and the rail becomes
+            the tallest, so half its surplus was handed to row one. The filter
+            bar stayed pinned to the top of a suddenly 270px row and the table
+            appeared to have sunk to the middle of the page. Making row two the
+            flexible track sends the whole surplus there, where it is canvas
+            below a short card instead of a hole above it. */}
+        <div className="mt-3 grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_240px] xl:grid-rows-[auto_1fr]">
           {/* One strip. Everything that narrows the table, plus the action you
               take once it is narrowed, in the order you use them: find it,
               scope it, then dispatch. The "Filter by status" eyebrow the comp
               carried is gone — five dotted chips with counts do not need
               labelling, and dropping it is what fits the row on one line. */}
           {/* Column one, same as the board. It used to span both columns, which
-              put its right edge — and so the Dispatch Truck button — 240px past
+              put its right edge — and so the Dispatch Vehicle button — 240px past
               the table it filters, out beyond the rail. A control bar wider than
               the thing it controls reads as belonging to the page rather than to
               the table, which is the wrong claim: every control in here narrows
@@ -476,7 +543,7 @@ export function PriorityQueue() {
                   Both moved to the footer, where the other facts about the
                   board live, and split apart: the threshold is now text, and
                   the door is named after the room it opens. */}
-              {/* A "Dispatch Truck" button stood here, sending to the worst
+              {/* A "Dispatch Vehicle" button stood here, sending to the worst
                   station nobody had actioned. It went for the reason the whole
                   strip has been shrinking: the table already answers the
                   question. The board is sorted worst-first, so the station the
@@ -511,7 +578,7 @@ export function PriorityQueue() {
                 style={{ minWidth: TABLE_MIN_WIDTH }}
               >
                 <caption className="sr-only">
-                  Stations a truck can fix, ranked by urgency, worst first. Select a row to see how
+                  Stations a vehicle can fix, ranked by urgency, worst first. Select a row to see how
                   its score was calculated.
                 </caption>
                 <thead>
@@ -542,15 +609,22 @@ export function PriorityQueue() {
                   <SkeletonRows rows={8} cols={COLUMNS.length} />
                 ) : (
                   <tbody>
-                    {rows.map((row) => (
-                      <QueueRow
-                        key={row.id}
-                        row={row}
-                        selected={openStationId === row.id}
-                        focused={arrival.focus === row.id}
-                        run={latestRunFor(runs, row.id) ?? undefined}
-                        onOpen={() => openStation(row.id)}
-                      />
+                    {rows.map((row, i) => (
+                      <Fragment key={row.id}>
+                        {cut === safePage * PAGE_SIZE + i && service && (
+                          <TargetLine
+                            cols={COLUMNS.length + 1}
+                            shortfall={service.shortfall}
+                          />
+                        )}
+                        <QueueRow
+                          row={row}
+                          selected={openStationId === row.id}
+                          focused={arrival.focus === row.id}
+                          run={latestRunFor(runs, row.id) ?? undefined}
+                          onOpen={() => openStation(row.id)}
+                        />
+                      </Fragment>
                     ))}
                   </tbody>
                 )}
@@ -560,7 +634,7 @@ export function PriorityQueue() {
             {!firstLoad && queue.length === 0 && (
               <div className="border-t border-[var(--color-line)] px-4 py-10 text-center">
                 <p className="text-[12px] text-[var(--color-ink-2)]">
-                  No station a truck can fix matches the current filters.
+                  No station a vehicle can fix matches the current filters.
                 </p>
                 <Button className="mt-3" onClick={resetFilters}>
                   Clear all filters
@@ -574,7 +648,7 @@ export function PriorityQueue() {
               <p className="flex flex-wrap items-center gap-x-1.5 text-[10px] text-[var(--color-ink-3)]">
                 Showing {rows.length} of {queue.length.toLocaleString('en-US')} stations ·{' '}
                 <span style={{ color: TONE.warn.fg }}>
-                  {(summary?.needsTruck ?? 0).toLocaleString('en-US')} need a truck now
+                  {(summary?.needsVehicle ?? 0).toLocaleString('en-US')} need a vehicle now
                 </span>
                 {snoozedCount > 0 && (
                   <>
@@ -596,7 +670,7 @@ export function PriorityQueue() {
                     filter, which is what it looked like up in the strip. */}
                 <span aria-hidden="true">·</span>
                 <span>
-                  dispatch at ≥ <span className="num">{NEEDS_TRUCK_THRESHOLD}</span>
+                  dispatch at ≥ <span className="num">{NEEDS_VEHICLE_THRESHOLD}</span>
                 </span>
 
                 {/* Named after what it opens. The old trigger was labelled with
@@ -621,8 +695,8 @@ export function PriorityQueue() {
               copy of the bands the Score column's ⓘ already published, so it is
               now only in the ⓘ — one list, derived from the two constants. */}
           {/* Ordered by how directly each answers "what should happen next".
-              Whether the shift can clear the board comes before which trucks
-              are moving, which comes before the work a truck cannot do, which
+              Whether the shift can clear the board comes before which vehicles
+              are moving, which comes before the work a vehicle cannot do, which
               comes before the network's shape. Every card is a summary with a
               way through to the screen that owns it, so the rail is a set of
               doors rather than a set of readouts. */}
@@ -631,7 +705,7 @@ export function PriorityQueue() {
             aria-label="Shift, fleet and network summary"
           >
             <ShiftCard />
-            <ActiveTrucks />
+            <ActiveVehicles />
             <MaintenanceCard />
             <FillDistribution />
           </aside>
@@ -649,87 +723,33 @@ export function PriorityQueue() {
 
 /* -------------------------------------------------------------------------- */
 
-type Summary = NonNullable<ReturnType<typeof useDispatch.getState>['summary']>;
-
 /**
- * The six headline numbers.
+ * The line across the queue where the network reaches target.
  *
- * Every card carries three layers, because a number alone is a quiz: the
- * label says what it is in plain words, the footer says what it means for a
- * rider, and the hint says why the line is drawn where it is. None of them say
- * "empty side" or "score ≥ 55" — that is the model's vocabulary, and a
- * dispatcher should not have to learn it to read their own board.
+ * Clear the failures above it and the board is at {@link SERVICE_TARGET}; below
+ * it is the part of the backlog it is reasonable to leave alone today. That
+ * second half is the point. A ranked list with no end implies every row is
+ * somebody's job, which is false — there have never been enough vehicles — and a
+ * dispatcher who cannot tell "not yet" from "not today" treats the whole board
+ * as equally urgent, which is the same as treating none of it as urgent.
  */
-function StatRow({
-  summary,
-  onClear,
-  onOnly,
-}: {
-  summary: Summary | null;
-  onClear: () => void;
-  onOnly: (c: StationCategory) => void;
-}) {
-  const dash = (n: number | undefined) => (summary ? (n ?? 0).toLocaleString('en-US') : '—');
-  const share = (n: number | undefined) =>
-    summary && summary.total > 0 ? `${Math.round(((n ?? 0) / summary.total) * 100)}% of the network` : '—';
-
+function TargetLine({ cols, shortfall }: { cols: number; shortfall: number }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-      <StatCard
-        label="Needs a truck"
-        value={dash(summary?.needsTruck)}
-        tone="empty"
-        foot={share(summary?.needsTruck)}
-        onClick={onClear}
-        actionLabel="Clear all status filters."
-        hint={`Stations urgent enough to send a vehicle to — urgency ${NEEDS_TRUCK_THRESHOLD} or above out of 100. Below that a station is drifting but still serving riders, so it stays on the list without demanding a trip.`}
-      />
-      <StatCard
-        label="Short on bikes"
-        value={dash(summary?.emptySide)}
-        tone="empty"
-        foot="riders may find none to take"
-        onClick={() => onOnly('empty')}
-        actionLabel="Show only stations short on bikes."
-        hint="Empty, or nearly. Somebody walking up wants a bike and there may not be one. A truck fixes this by dropping bikes off."
-      />
-      <StatCard
-        label="Short on docks"
-        value={dash(summary?.fullSide)}
-        tone="flood"
-        foot="riders may find nowhere to park"
-        onClick={() => onOnly('full')}
-        actionLabel="Show only stations short on docks."
-        hint="Full, or nearly. Somebody arriving with a bike may have nowhere to leave it and has to ride on. A truck fixes this by picking bikes up — the opposite trip."
-      />
-      <StatCard
-        label="Trucks out"
-        value="5/8"
-        foot="3 idle at depots"
-        to="/fleet/trucks"
-        actionLabel="Open fleet operations."
-        hint="Vehicles currently on the road out of the total fleet. Fixture — the public feed carries no vehicles."
-      />
-      <StatCard
-        label="Not reporting"
-        value={dash(summary?.unverified)}
-        tone={summary && summary.unverified > 0 ? 'warn' : 'ink'}
-        foot="silent over an hour"
-        to="/monitoring/unverified"
-        actionLabel="Open unverified stations."
-        hint="Stations that have not checked in for more than an hour. Their bike counts cannot be trusted, so they are left out of the ranking entirely rather than sending a truck on a stale reading."
-      />
-      <StatCard
-        label="Network fill"
-        value={summary?.networkFill == null ? '—' : Math.round(summary.networkFill * 100)}
-        unit={summary?.networkFill == null ? undefined : '%'}
-        foot="50% is balanced"
-        bar={{ value: summary?.networkFill ?? 0, tone: 'ok' }}
-        to="/analytics"
-        actionLabel="Open network performance."
-        hint="Share of usable slots across the city that currently hold a bike. At 50% the network has roughly as many bikes to lend as spaces to park. Well above means docks are scarce; well below means bikes are."
-      />
-    </div>
+    <tr aria-hidden="true">
+      <td colSpan={cols} className="p-0">
+        <div className="flex items-center gap-2.5 border-y border-dashed border-[var(--color-ok)] bg-[var(--color-ok-bg)] px-3 py-1.5">
+          <Icon name="check" size={11} className="shrink-0 text-[var(--color-ok)]" />
+          <span className="text-[10px] font-medium text-[var(--color-ink-2)]">
+            Restoring the {shortfall.toLocaleString('en-US')} failing{' '}
+            {shortfall === 1 ? 'station' : 'stations'} above this line puts the network at its{' '}
+            {Math.round(SERVICE_TARGET * 100)}% service target.
+          </span>
+          <span className="ml-auto shrink-0 text-[10px] text-[var(--color-ink-3)]">
+            below: acceptable for now
+          </span>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -863,7 +883,7 @@ function QueueRow({
  *
  * A search that quietly returns nothing cannot be distinguished from a search
  * for a station that does not exist. These are real matches the queue is not
- * allowed to show — a truck cannot fix them — so rather than leak them into
+ * allowed to show — a vehicle cannot fix them — so rather than leak them into
  * the rebalancing list, the queue names them and points at the screen that
  * owns them.
  */
@@ -881,7 +901,7 @@ function OffQueueHits({
     {
       rows: matches.mechanic,
       label: 'need a mechanic',
-      why: 'out of service — a truck cannot fix these',
+      why: 'out of service — a vehicle cannot fix these',
       to: '/maintenance/orders',
       linkLabel: 'Maintenance Ops',
       tone: 'empty' as Tone,
@@ -1024,7 +1044,7 @@ function DispositionCell({ row }: { row: StationRow }) {
  * `usableSlots` is `bikesAvailable + docksAvailable` — dead docks are already
  * out of the fill denominator, so a station with 28 of 40 docks broken is
  * correctly scored against the twelve that work. The score was right; the board
- * just never said why, and "92% full" sends a truck to collect bikes from a
+ * just never said why, and "92% full" sends a vehicle to collect bikes from a
  * station that actually needs a mechanic.
  *
  * Returns a short phrase or null. Kept to one clause and no icon because it
@@ -1058,19 +1078,40 @@ function ActionHint({ row }: { row: StationRow }) {
         className="mt-1 block text-[10px] underline-offset-2 hover:underline"
         style={{ color: TONE.empty.fg }}
       >
-        no truck can fix
+        no vehicle can fix
       </Link>
     );
   }
 
   const drop = action.kind === 'drop';
+  const pickup = row.pickup;
   return (
-    <span
-      className="num mt-1 block text-[10px]"
-      style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}
-    >
-      {drop ? 'drop' : 'collect'} ~{action.bikes}
-    </span>
+    <>
+      <span
+        className="num mt-1 block text-[10px]"
+        style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}
+      >
+        {drop ? 'drop' : 'collect'} ~{action.bikes}
+      </span>
+
+      {/* The second errand at the same stop. Only the confirmed-dead count is
+          shown: the reported-but-unchecked ones are a mechanic's call, and a
+          driver cannot act on them. Immediate pickups are tinted, routine ones
+          stay grey — on a row this dense the colour is the only thing that
+          separates "take these now" from "if there is room". */}
+      {pickup && pickup.load > 0 && (
+        <span
+          className="num mt-0.5 block text-[10px]"
+          style={{
+            color:
+              pickup.urgency === 'immediate' ? TONE.warn.fg : 'var(--color-ink-3)',
+          }}
+          title={pickup.reason}
+        >
+          +{pickup.load} dead{pickup.urgency === 'immediate' ? ' now' : ''}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -1131,12 +1172,12 @@ function RailStat({
  * here too, in one line, with the working one click away.
  */
 function ShiftCard() {
-  const lane = useDispatch((s) => s.lanes.truck);
+  const lane = useDispatch((s) => s.lanes.vehicle);
   const workOrders = useConsole((s) => s.workOrders);
 
   const now = Date.now();
   const demand = useMemo(() => rebalanceDemand(lane), [lane]);
-  const activeCapacity = TRUCKS.filter((t) => t.state !== 'idle').reduce(
+  const activeCapacity = VEHICLES.filter((t) => t.state !== 'idle').reduce(
     (sum, t) => sum + t.capacity,
     0,
   );
@@ -1145,7 +1186,7 @@ function ShiftCard() {
     () =>
       shiftCapacity(ROSTER, workOrders, {
         relocatable: demand.relocatable,
-        truckCapacity: activeCapacity,
+        vehicleCapacity: activeCapacity,
         date: new Date(now),
       }),
     [workOrders, demand.relocatable, activeCapacity, now],
@@ -1166,7 +1207,7 @@ function ShiftCard() {
         tone={short ? 'empty' : 'ok'}
         label={
           cap.runsNeeded === null
-            ? 'No active truck capacity to divide the backlog into.'
+            ? 'No active vehicle capacity to divide the backlog into.'
             : short
               ? `Short by ${Math.abs(cap.shortfall ?? 0)}. The rest carries to the next shift.`
               : 'Enough to clear the rebalancing backlog.'
@@ -1188,7 +1229,7 @@ function ShiftCard() {
 }
 
 /**
- * Work a truck cannot do, summarised on the truck screen.
+ * Work a vehicle cannot do, summarised on the vehicle screen.
  *
  * The queue deliberately excludes hardware, which is correct and also means a
  * dispatcher can work this board all shift without ever learning that fifty
@@ -1245,37 +1286,37 @@ function MaintenanceCard() {
 }
 
 /** Fixtures: the feed carries no vehicles. Labelled as such on the card. */
-const RAIL_TRUCK_IDS = ['#4', '#7', '#2'];
+const RAIL_VEHICLE_IDS = ['#4', '#7', '#2'];
 
-function ActiveTrucks() {
-  const shown = RAIL_TRUCK_IDS.map((id) => TRUCKS.find((t) => t.id === id)!).filter(Boolean);
+function ActiveVehicles() {
+  const shown = RAIL_VEHICLE_IDS.map((id) => VEHICLES.find((t) => t.id === id)!).filter(Boolean);
 
   return (
     <Card>
-      <CardHead title="Active trucks" right={<RailLink to="/fleet/trucks" label="Open fleet operations" />} />
+      <CardHead title="Active vehicles" right={<RailLink to="/fleet/vehicles" label="Open fleet operations" />} />
       <ul className="px-3.5 pb-2">
-        {shown.map((truck, i) => (
+        {shown.map((vehicle, i) => (
           <li
-            key={truck.id}
+            key={vehicle.id}
             className={cn('py-2.5', i > 0 && 'border-t border-[var(--color-line-soft)]')}
           >
             <div className="flex items-center justify-between gap-2">
               <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
-                Truck {truck.id}
+                Vehicle {vehicle.id}
               </span>
               <span
                 className="inline-flex items-center gap-1.5 text-[10px] font-medium whitespace-nowrap"
-                style={{ color: TONE[TRUCK_STATE_TONE[truck.state]].fg }}
+                style={{ color: TONE[VEHICLE_STATE_TONE[vehicle.state]].fg }}
               >
-                <Dot tone={TRUCK_STATE_TONE[truck.state]} size={5} />
-                {TRUCK_STATE_LABEL[truck.state]}
+                <Dot tone={VEHICLE_STATE_TONE[vehicle.state]} size={5} />
+                {VEHICLE_STATE_LABEL[vehicle.state]}
               </span>
             </div>
             <p className="mt-1 text-[10.5px] leading-snug text-[var(--color-ink-2)]">
-              {truck.where}
+              {vehicle.where}
             </p>
-            {truck.when && (
-              <p className="num mt-0.5 text-[10px] text-[var(--color-ink-3)]">{truck.when}</p>
+            {vehicle.when && (
+              <p className="num mt-0.5 text-[10px] text-[var(--color-ink-3)]">{vehicle.when}</p>
             )}
           </li>
         ))}

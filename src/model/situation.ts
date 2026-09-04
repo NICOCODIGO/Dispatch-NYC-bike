@@ -36,7 +36,7 @@ const BLIND_DOCK_SHARE = 0.08;
 const DEAD_DOCK_SHARE_ALARM = 0.04;
 /** …or this many stations with most of their rack out of service. */
 const CRIPPLED_SITES_ALARM = 15;
-/** A critical station failing at least this long with no truck sent is neglected. */
+/** A critical station failing at least this long with no vehicle sent is neglected. */
 const STUCK_MINUTES = 60;
 
 export type Situation =
@@ -75,7 +75,7 @@ export type Situation =
       name: string;
       stationId: string;
       score: number;
-      needsTruck: number;
+      needsVehicle: number;
       dominant: NetworkSummary['dominant'];
       /** Trailing context, folded into the detail line. */
       mechanic: number;
@@ -93,7 +93,7 @@ export interface SituationInput {
   hardware: HardwareTotals;
   tracks: Track[] | null;
   durations: Map<string, Duration>;
-  /** Stations with a truck already on the way (open run, or marked dispatched). */
+  /** Stations with a vehicle already on the way (open run, or marked dispatched). */
   activeRunIds: Set<string>;
   /** Mechanic-lane stations that already have a work order. */
   raisedFaultIds: Set<string>;
@@ -121,8 +121,8 @@ function blindSpot(unverified: ScoredStation[], networkDocks: number) {
 }
 
 /**
- * A truck-lane station that has been critical for at least an hour and has no
- * truck on the way. It is not the top of the list — something else is always
+ * A vehicle-lane station that has been critical for at least an hour and has no
+ * vehicle on the way. It is not the top of the list — something else is always
  * momentarily worse — so it never gets picked, which is exactly why it needs
  * naming here.
  */
@@ -130,11 +130,11 @@ function neglectedCritical(input: SituationInput) {
   const { tracks, durations, activeRunIds, lanes } = input;
   if (!tracks) return null;
 
-  const truckIds = new Set(lanes.truck.map((s) => s.station.stationId));
+  const vehicleIds = new Set(lanes.vehicle.map((s) => s.station.stationId));
 
   const candidates = tracks
     .filter((t) => t.outcome !== 'resolved' && t.currentScore >= CRITICAL_THRESHOLD)
-    .filter((t) => truckIds.has(t.stationId))
+    .filter((t) => vehicleIds.has(t.stationId))
     .filter((t) => !activeRunIds.has(t.stationId))
     .map((t) => ({ t, d: durations.get(t.stationId) }))
     .filter((x): x is { t: Track; d: Duration } => Boolean(x.d?.confident) && x.d!.minutes >= STUCK_MINUTES);
@@ -205,10 +205,10 @@ export function assessSituation(input: SituationInput): Situation {
   }
 
   // 5. The routine state: everything below the alarm line.
-  const needsTruck = summary?.needsTruck ?? 0;
+  const needsVehicle = summary?.needsVehicle ?? 0;
   const mechanic = lanes.mechanic.length;
 
-  if (needsTruck === 0) {
+  if (needsVehicle === 0) {
     return {
       kind: 'clear',
       networkFill: summary?.networkFill ?? null,
@@ -217,13 +217,13 @@ export function assessSituation(input: SituationInput): Situation {
     };
   }
 
-  const worst = summary?.worstTruck;
+  const worst = summary?.worstVehicle;
   return {
     kind: 'worst',
     name: worst?.name ?? '—',
     stationId: worst?.stationId ?? '',
     score: worst?.score ?? 0,
-    needsTruck,
+    needsVehicle,
     dominant: summary?.dominant ?? null,
     mechanic,
     unraised: unraised.length,

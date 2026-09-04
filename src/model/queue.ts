@@ -4,7 +4,7 @@
  * Kept out of the components so the ordering a dispatcher sees is testable, and
  * so the detail panel's prev/next walks exactly the list on screen.
  *
- * The table is scoped to the truck lane by construction: mechanic and
+ * The table is scoped to the vehicle lane by construction: mechanic and
  * unverified stations live in their own sections and can never be filtered into
  * the ranked queue, because the queue answers one question and they are not an
  * answer to it.
@@ -51,13 +51,13 @@ export function applyFilters(lanes: Triaged, filters: Filters): ScoredStation[] 
   const { search, borough, categories, sortKey, sortDir } = filters;
   const needle = search.trim().toLowerCase();
 
-  // With no category filter the queue is the truck lane. Selecting Healthy or
+  // With no category filter the queue is the vehicle lane. Selecting Healthy or
   // Not installed in the rail is an explicit request to inspect those, so they
   // join the pool — but mechanic and unverified never do.
   const pool =
     categories.length === 0
-      ? lanes.truck
-      : [...lanes.truck, ...lanes.quiet].filter((s) =>
+      ? lanes.vehicle
+      : [...lanes.vehicle, ...lanes.quiet].filter((s) =>
           categories.includes(s.breakdown.category),
         );
 

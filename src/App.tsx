@@ -4,7 +4,7 @@ import { startPolling } from './store/useDispatch';
 import { AppShell } from './shell/AppShell';
 import { PriorityQueue } from './views/PriorityQueue';
 import { MapView } from './views/MapView';
-import { TruckDispatch } from './views/TruckDispatch';
+import { VehicleDispatch } from './views/VehicleDispatch';
 import { DispatchHistory } from './views/DispatchHistory';
 import { Unverified } from './views/Unverified';
 import { SiteHealth } from './views/SiteHealth';
@@ -42,7 +42,7 @@ export default function App() {
         <Route path="/dispatch/history" element={<DispatchHistory />} />
 
         {/* Fleet */}
-        <Route path="/fleet/trucks" element={<TruckDispatch />} />
+        <Route path="/fleet/vehicles" element={<VehicleDispatch />} />
         <Route path="/fleet/shift" element={<Shift />} />
 
         {/* Maintenance */}
@@ -62,8 +62,15 @@ export default function App() {
         {/* Redirects from the pre-section paths. */}
         <Route path="/map" element={<Navigate to="/dispatch/map" replace />} />
         <Route path="/history" element={<Navigate to="/dispatch/history" replace />} />
-        <Route path="/trucks" element={<Navigate to="/fleet/trucks" replace />} />
         <Route path="/shift" element={<Navigate to="/fleet/shift" replace />} />
+
+        {/* Fleet operations was /trucks, then /fleet/trucks, and is now
+            /fleet/vehicles — the crews run vans as well as box trucks, so the
+            noun was wrong rather than merely dated. Both old paths are kept:
+            renaming a route silently turns every bookmark into a redirect to
+            the queue, which looks like the screen was deleted. */}
+        <Route path="/trucks" element={<Navigate to="/fleet/vehicles" replace />} />
+        <Route path="/fleet/trucks" element={<Navigate to="/fleet/vehicles" replace />} />
         <Route path="/mechanics" element={<Navigate to="/maintenance/orders" replace />} />
         <Route path="/unverified" element={<Navigate to="/monitoring/unverified" replace />} />
         <Route path="/dispatch" element={<Navigate to="/" replace />} />

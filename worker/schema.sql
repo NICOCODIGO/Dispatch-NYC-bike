@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS snapshot (
   signal      TEXT    NOT NULL,
   bikes       INTEGER NOT NULL,
   docks       INTEGER NOT NULL,
-  needs_truck INTEGER NOT NULL,
+  needs_vehicle INTEGER NOT NULL,
   PRIMARY KEY (station_id, t)
 );
 

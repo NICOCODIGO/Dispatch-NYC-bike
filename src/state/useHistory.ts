@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SNAPSHOT_RETENTION_MS, readSnapshots, type SnapshotRow } from '../data/snapshots';
-import { NEEDS_TRUCK_THRESHOLD } from '../model/score';
+import { NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import {
   buildTracks,
   countOutcomes,
@@ -87,7 +87,7 @@ export interface StuckStation {
 
 export function stuckStations(tracks: Track[], minMinutes = 5): StuckStation[] {
   return tracks
-    .filter((t) => t.outcome !== 'resolved' && t.currentScore >= NEEDS_TRUCK_THRESHOLD)
+    .filter((t) => t.outcome !== 'resolved' && t.currentScore >= NEEDS_VEHICLE_THRESHOLD)
     .map((t) => ({
       track: t,
       minutesFailing: Math.max(1, Math.round((t.lastSeen - t.firstSeen) / 60_000)),

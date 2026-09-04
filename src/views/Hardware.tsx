@@ -17,7 +17,7 @@ import {
 /**
  * Where a mechanic or a swap van goes.
  *
- * The Rebalancing board ranks stations a *truck* can fix and deliberately excludes
+ * The Rebalancing board ranks stations a *vehicle* can fix and deliberately excludes
  * hardware. This is the counterpart board: the same feed, ranked by the two
  * fields the queue throws away — `num_docks_disabled` and `num_bikes_disabled` —
  * plus the modelled low-charge count.
@@ -47,7 +47,7 @@ export function Hardware() {
     <>
       <PageHeader
         title="Hardware & Docks"
-        subtitle="Work a truck cannot do, ranked worst first. Stations with dead docks, disabled bikes or flat batteries — the counts the dispatch queue sets aside because moving bikes will not change them."
+        subtitle="Work a vehicle cannot do, ranked worst first. Stations with dead docks, disabled bikes or flat batteries — the counts the dispatch queue sets aside because moving bikes will not change them."
       />
 
       <PageBody>
@@ -188,7 +188,7 @@ function HardwareFinding({
               out of service.{' '}
             </>
           )}
-          None of it is a truck job — a van full of bikes cannot re-seat a dock or swap a battery
+          None of it is a vehicle job — a van full of bikes cannot re-seat a dock or swap a battery
           pack.
           {totals.siteFaults > 0 && (
             <>

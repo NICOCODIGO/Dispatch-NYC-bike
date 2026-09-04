@@ -51,12 +51,32 @@ export interface StationRow {
   stationNumber?: string;
 
   /**
-   * What a truck should do on arrival, and how much of it.
+   * Whether a rider can both take a bike and park one here right now.
+   *
+   * Carried on the row because it is what the queue's target line counts: most
+   * rows are drifting stations that still serve riders, and clearing those
+   * moves the network's service level by nothing. False means fixing this row
+   * puts a station back into service. See `model/service.ts`.
+   */
+  serving: boolean;
+
+  /**
+   * What a vehicle should do on arrival, and how much of it.
    *
    * "Empty" is a diagnosis; a dispatcher needs the instruction. Computed once
    * in `insights.ts` so the queue and the fleet panel cannot disagree.
    */
   action?: { kind: 'drop' | 'collect' | 'mechanic' | 'none'; bikes: number };
+
+  /**
+   * What the same vehicle should take *away*, decided in `model/pickup.ts`.
+   *
+   * Separate from `action` because they are separate errands that happen to
+   * share a trip: `action` moves rideable bikes to fix a supply problem, this
+   * one removes dead ones. A crew can be asked to do both at one stop, and
+   * before this existed they were told only the first.
+   */
+  pickup?: import('../model/pickup').PickupCall;
 
   /**
    * How long this station has been failing, from the poll history.
