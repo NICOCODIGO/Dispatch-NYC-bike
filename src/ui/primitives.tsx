@@ -1,9 +1,8 @@
-import { useId, useState, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Icon, type IconName } from './Icon';
 import { TipBody, TipTitle, Tooltip } from './Tooltip';
-import { linkifyNode } from '../content/definitions';
-import { TONE, toneForScore, type Tone } from './tone';
+import { TONE, isSoftTone, toneForScore, type Tone } from './tone';
 import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import { cn } from '../lib/cn';
 
@@ -126,14 +125,51 @@ export function Button({
    Pills.
 --------------------------------------------------------------------------- */
 
-/** The neutral status pill used in table cells: Empty, Flooded, Full, Low… */
-export function StatusPill({ label, className }: { label: string; className?: string }) {
+/**
+ * The status pill used in table cells: Empty, Flooded, Full, Low…
+ *
+ * With a `tone` it carries the same color as the matching filter chip. Only the
+ * two hard supply failures — `empty` and `flood` — fill solid; every other tone
+ * (the `warn`/`flood-soft` warnings, plus `ok`/`ink`/`mute`) stays a tint. That
+ * solid-vs-tint step is what keeps Flooded from looking like Full. Without a
+ * `tone` it falls back to the neutral gray pill — the form still used outside
+ * the queue, e.g. on the hardware screens.
+ */
+export function StatusPill({
+  label,
+  tone,
+  className,
+}: {
+  label: string;
+  tone?: Tone;
+  className?: string;
+}) {
+  if (!tone) {
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center rounded-full border border-[var(--color-line)] bg-[var(--color-sunken)] px-2 py-[2px] text-[10px] font-medium text-[var(--color-ink-2)]',
+          className,
+        )}
+      >
+        {label}
+      </span>
+    );
+  }
+
+  const t = TONE[tone];
+  const solid = tone === 'empty' || tone === 'flood';
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border border-[var(--color-line)] bg-[var(--color-sunken)] px-2 py-[2px] text-[10px] font-medium text-[var(--color-ink-2)]',
+        'inline-flex items-center rounded-full border px-2 py-[2px] text-[10px] font-semibold',
         className,
       )}
+      style={
+        solid
+          ? { color: t.onFg, backgroundColor: t.fg, borderColor: t.fg }
+          : { color: t.fg, backgroundColor: t.bg, borderColor: t.line }
+      }
     >
       {label}
     </span>
@@ -171,6 +207,10 @@ export function TonePill({
  * A filter chip. Selected chips fill with their signal color; unselected ones
  * stay quiet and carry a small colored dot instead, so the row reads as "these
  * two are on" at a glance rather than as five equally loud buttons.
+ *
+ * A selected *warning* tone (`warn`, `flood-soft`) fills as a tint rather than
+ * a solid block — same split the status pills use, and the reason Flooded (a
+ * pale tint) never looks like Full (solid blue) even sitting next to it.
  */
 export function FilterChip({
   label,
@@ -188,13 +228,18 @@ export function FilterChip({
   const t = TONE[tone];
 
   if (active) {
+    const soft = isSoftTone(tone);
     return (
       <button
         type="button"
         onClick={onClick}
         aria-pressed={true}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[11px] font-medium transition-colors"
-        style={{ backgroundColor: t.fg, color: t.onFg }}
+        className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-[5px] text-[11px] font-medium transition-colors"
+        style={
+          soft
+            ? { backgroundColor: t.bg, color: t.fg, borderColor: t.fg }
+            : { backgroundColor: t.fg, color: t.onFg, borderColor: t.fg }
+        }
       >
         {/* `currentColor` at low alpha rather than white: on the one tone whose
             fill takes dark text, white-on-white dot and pill vanished. */}
@@ -396,6 +441,8 @@ export interface StatCardProps {
   value: ReactNode;
   /** Small unit rendered after the value at reduced size, e.g. "%" or "min". */
   unit?: string;
+  /** Extra classes on the card shell — grid spans and the like. */
+  className?: string;
   tone?: Tone;
   /** The line under the value. */
   foot?: ReactNode;
@@ -430,6 +477,7 @@ export function StatCard({
   label,
   value,
   unit,
+  className,
   tone = 'ink',
   foot,
   bar,
@@ -481,6 +529,7 @@ export function StatCard({
   const shell = cn(
     'card group flex min-w-0 flex-col justify-between px-3 py-2.5 text-left',
     interactive && 'transition-colors hover:border-[var(--color-ink-3)]',
+    className,
   );
 
   if (to) {
@@ -728,12 +777,6 @@ export function Th({
   help?: ColumnHelpSpec;
 }) {
   const headerText = typeof children === 'string' ? children : '';
-  const label = (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap">
-      {children}
-      <SortGlyph active={active} dir={dir} />
-    </span>
-  );
 
   return (
     <th
@@ -741,7 +784,7 @@ export function Th({
       style={width ? { width } : undefined}
       aria-sort={onSort ? (active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}
       className={cn(
-        'eyebrow border-b border-[var(--color-line)] px-3 py-2.5 align-middle font-semibold',
+        'group/th eyebrow border-b border-[var(--color-line)] px-3 py-2.5 align-middle font-semibold',
         align === 'right' && 'text-right',
         align === 'center' && 'text-center',
         align === 'left' && 'text-left',
@@ -749,10 +792,14 @@ export function Th({
         className,
       )}
     >
-      {/* No `flex-row-reverse` on right-aligned columns: it put the help icon
-          to the *left* of the label, so "Bikes / Open" read as "ⓘ Bikes". The
-          th's own text-align already pushes this inline-flex box to the right;
-          the order inside it should stay label-then-icon everywhere. */}
+      {/* Fixed order: label → help icon → sort caret. The help icon therefore
+          sits the same distance from every label whether the column sorts or
+          not — the caret, which only some columns have and which reveals on
+          hover, trails behind it instead of shoving the icon around.
+
+          No `flex-row-reverse` on right-aligned columns: it put the icon before
+          the label ("ⓘ Bikes"). The th's own text-align already right-packs
+          this box; the internal order stays the same everywhere. */}
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
         {onSort ? (
           /* `text-transform: inherit` because Tailwind's Preflight resets
@@ -766,16 +813,15 @@ export function Th({
                orderable; it does not say "sort" rather than "filter", and that
                is the distinction people were actually getting wrong. */
             title={headerText ? `Sort by ${headerText.toLowerCase()}` : 'Sort by this column'}
-            className="group/sort cursor-pointer [text-transform:inherit] hover:text-[var(--color-ink)]"
+            className="cursor-pointer [text-transform:inherit] hover:text-[var(--color-ink)]"
           >
-            {label}
+            {children}
           </button>
-        ) : sortable ? (
-          label
         ) : (
           children
         )}
         {help && <ColumnHelp title={headerText} spec={help} />}
+        {(onSort || sortable) && <SortGlyph active={active} dir={dir} />}
       </span>
     </th>
   );
@@ -807,7 +853,7 @@ function SortGlyph({ active = false, dir = 'desc' }: { active?: boolean; dir?: '
         'shrink-0 transition-opacity',
         active
           ? 'text-[var(--color-ink)] opacity-100'
-          : 'text-[var(--color-ink-3)] opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100',
+          : 'text-[var(--color-ink-3)] opacity-0 group-hover/th:opacity-100 group-focus-within/th:opacity-100',
       )}
     >
       <path d="M4 0 7 3.4H1z" fill="currentColor" opacity={active && dir === 'asc' ? 1 : 0.4} />
@@ -842,115 +888,10 @@ export function Banner({
   );
 }
 
-/* ---------------------------------------------------------------------------
-   Finding — the sentence at the top of a screen that says what the numbers
-   below it mean.
-
-   A console full of counts makes the reader do the interpreting. This states
-   the conclusion in words, then shows the figures it was drawn from, so the
-   page leads with a claim it is willing to defend rather than a wall of data.
-
-   The claim and the figures are always visible; the reasoning between them
-   folds away behind the chevron. A dispatcher who already knows why Broadway
-   is red should not have to read the paragraph again on every poll, and one
-   who doesn't is one click from it. Open by default — the explanation is the
-   point of the banner, so hiding it has to be the reader's choice.
---------------------------------------------------------------------------- */
-
-export function Finding({
-  tone = 'ink',
-  icon,
-  headline,
-  detail,
-  stats,
-}: {
-  tone?: Tone;
-  icon: IconName;
-  headline: ReactNode;
-  detail?: ReactNode;
-  stats?: { label: string; value: ReactNode; tone?: Tone }[];
-}) {
-  const t = TONE[tone];
-  const [open, setOpen] = useState(true);
-  const detailId = useId();
-  const showDetail = Boolean(detail) && open;
-
-  return (
-    <section
-      className="rounded-lg border bg-[var(--color-surface)]"
-      style={{ borderColor: t.line, borderLeft: `3px solid ${t.fg}` }}
-    >
-      <div className="flex items-center gap-2.5 px-3.5 py-2">
-        <span
-          aria-hidden="true"
-          className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded"
-          style={{ backgroundColor: t.bg, color: t.fg }}
-        >
-          <Icon name={icon} size={12} />
-        </span>
-        {/* The claim alone, and it stays put — collapsing the detail must not
-            move the sentence the reader is already looking at. The jargon is
-            densest here, so `linkifyNode` teaches the prose in place. */}
-        <p className="min-w-0 flex-1 text-[12px] leading-normal font-semibold text-[var(--color-ink)]">
-          {linkifyNode(headline)}
-        </p>
-        {detail && (
-          <button
-            type="button"
-            onClick={() => setOpen(!open)}
-            aria-expanded={open}
-            aria-controls={detailId}
-            aria-label={open ? 'Hide the explanation' : 'Show the explanation'}
-            className="-mr-1 shrink-0 self-start rounded p-1 text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]"
-          >
-            <Icon
-              name="chevron-down"
-              size={14}
-              className={cn('transition-transform duration-200', !open && '-rotate-90')}
-            />
-          </button>
-        )}
-      </div>
-
-      {/* Height is animated by the 0fr → 1fr grid row rather than a guessed
-          max-height, so the curve is the same whether the reasoning is one
-          line or five. `inert` keeps the folded-away link out of the tab
-          order. The shared `.rail-ease` curve is the one the chrome rail
-          unfolds on, and reduced-motion drops it in `index.css`. */}
-      {detail && (
-        <div
-          id={detailId}
-          className="rail-ease grid px-3.5 transition-[grid-template-rows]"
-          style={{ gridTemplateRows: showDetail ? '1fr' : '0fr' }}
-          aria-hidden={!showDetail}
-          {...(!showDetail ? { inert: '' } : {})}
-        >
-          <div className="min-h-0 overflow-hidden">
-            <p className="pb-2 pl-[30px] text-[12px] leading-normal text-[var(--color-ink-2)]">
-              {linkifyNode(detail)}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {stats && stats.length > 0 && (
-        <dl className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-[var(--color-line-soft)] px-3.5 py-1.5">
-          {stats.map((s) => (
-            <div key={s.label} className="flex items-baseline gap-1.5">
-              <dd
-                className="num text-[12px] font-semibold"
-                style={{ color: TONE[s.tone ?? 'ink'].fg }}
-              >
-                {s.value}
-              </dd>
-              <dt className="text-[10px] text-[var(--color-ink-3)]">{s.label}</dt>
-            </div>
-          ))}
-        </dl>
-      )}
-    </section>
-  );
-}
+/* Finding — the sentence at the top of a screen that says what the numbers
+   below it mean. Its own file now (it grew an eyebrow, a footer action slot and
+   a tone wash); re-exported here so the six screens that import it are unmoved. */
+export { Finding, type FindingStat } from './Finding';
 
 /**
  * "You arrived here from somewhere else, and here is the way back."

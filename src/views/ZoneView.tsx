@@ -168,6 +168,10 @@ export function ZoneView() {
                     <Td align="right">
                       <ScorePeek
                         breakdown={s.breakdown}
+                        signals={{
+                          broken: s.raw?.bikesDisabled ?? 0,
+                          dead: s.raw?.docksDisabled ?? 0,
+                        }}
                         size="sm"
                         onOpen={() => openStation(s.id)}
                       />

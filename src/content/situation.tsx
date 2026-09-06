@@ -26,25 +26,36 @@ const SIGNAL_WORD: Record<string, string> = {
 
 const num = (n: number) => n.toLocaleString('en-US');
 
-/** A link or button styled to sit inside a Finding's detail line, in its tone. */
-function Action({
+/**
+ * A real button for the Finding's footer — the situation headline is the one
+ * place the banner is an alert rather than a caption, so its call to action
+ * gets a button rather than an underlined word buried mid-sentence.
+ */
+function ActionButton({
   to,
   onClick,
-  color,
+  tone,
+  primary = false,
   children,
 }: {
   to?: string;
   onClick?: () => void;
-  color: string;
+  tone: Tone;
+  primary?: boolean;
   children: ReactNode;
 }) {
-  const cls = 'font-medium whitespace-nowrap underline underline-offset-2';
+  const t = TONE[tone];
+  const cls =
+    'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium whitespace-nowrap transition-colors';
+  const style = primary
+    ? { color: t.onFg, backgroundColor: t.fg, borderColor: t.fg }
+    : { color: t.fg, backgroundColor: 'transparent', borderColor: t.line };
   return to ? (
-    <Link to={to} className={cls} style={{ color }}>
+    <Link to={to} className={cls} style={style}>
       {children}
     </Link>
   ) : (
-    <button type="button" onClick={onClick} className={`${cls} cursor-pointer`} style={{ color }}>
+    <button type="button" onClick={onClick} className={`${cls} cursor-pointer`} style={style}>
       {children}
     </button>
   );
@@ -67,6 +78,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="radio-tower"
           tone="empty"
+          eyebrow="Blind spot"
           headline={`The board can't see ${Math.round(s.dockShare * 100)}% of the network right now.`}
           detail={
             <>
@@ -78,13 +90,15 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
                 </>
               )}
               {s.neverReported > 0 && <>; {s.neverReported} have never reported at all</>}. Their
-              counts are dropped from the ranking, so nothing below reflects them.{' '}
-              <Action to="/monitoring/unverified" color={TONE.empty.fg}>
-                Open Not Reporting →
-              </Action>
+              counts are dropped from the ranking, so nothing below reflects them.
             </>
           }
           stats={stats}
+          actions={
+            <ActionButton to="/monitoring/unverified" tone="empty" primary>
+              Open Not Reporting →
+            </ActionButton>
+          }
         />
       );
     }
@@ -94,16 +108,14 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="alert-triangle"
           tone="empty"
+          eyebrow="Unserved"
           headline={`${s.name} has scored critical for ${elapsed(s.minutes)} — no vehicle sent.`}
           detail={
             <>
               {SIGNAL_WORD[s.signal] ?? 'failing'} {since(s.failingSince)}
               {trend(s.delta)}. Something is momentarily worse on every poll, so it never reaches the
               top of the list — but an hour {SIGNAL_WORD[s.signal] ?? 'down'} is an hour of riders
-              turned away.{' '}
-              <Action onClick={() => openStation(s.stationId)} color={TONE.empty.fg}>
-                Open its receipt →
-              </Action>
+              turned away.
             </>
           }
           stats={[
@@ -115,6 +127,11 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
               tone: s.delta > 5 ? 'empty' : 'mute',
             },
           ]}
+          actions={
+            <ActionButton onClick={() => openStation(s.stationId)} tone="empty" primary>
+              Open station →
+            </ActionButton>
+          }
         />
       );
 
@@ -123,15 +140,13 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="wrench"
           tone="empty"
+          eyebrow="Hardware"
           headline={`Hardware is failing at scale — ${num(s.deadDocks)} dead docks, ${(s.dockShare * 100).toFixed(1)}% of the network.`}
           detail={
             <>
               {s.sites} station{s.sites === 1 ? ' has' : 's have'} most of the rack out of service
               {s.brokenBikes > 0 && <>, and {num(s.brokenBikes)} bikes are disabled on top</>}. None
-              of it is a vehicle job — moving bikes cannot re-seat a dock.{' '}
-              <Action to="/maintenance/hardware" color={TONE.empty.fg}>
-                Open Hardware →
-              </Action>
+              of it is a vehicle job — moving bikes cannot re-seat a dock.
             </>
           }
           stats={[
@@ -139,6 +154,11 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
             { label: 'of network', value: `${(s.dockShare * 100).toFixed(1)}%` },
             { label: 'sites down', value: s.sites, tone: 'empty' },
           ]}
+          actions={
+            <ActionButton to="/maintenance/hardware" tone="empty" primary>
+              Open Hardware →
+            </ActionButton>
+          }
         />
       );
 
@@ -147,6 +167,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="wrench"
           tone="warn"
+          eyebrow="No repair"
           headline={
             s.count === 1
               ? '1 out-of-service station has no repair scheduled.'
@@ -155,16 +176,18 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
           detail={
             <>
               Worst is {s.worstName} ({s.worstBorough}) — {s.worstFault}, confirmed on the latest
-              feed. A dead station is a hole the size of its dock count, and no vehicle closes it.{' '}
-              <Action to="/maintenance/orders" color={TONE.warn.fg}>
-                Send a mechanic →
-              </Action>
+              feed. A dead station is a hole the size of its dock count, and no vehicle closes it.
             </>
           }
           stats={[
             { label: 'no repair', value: s.count, tone: 'warn' },
             { label: 'out of service', value: s.total },
           ]}
+          actions={
+            <ActionButton to="/maintenance/orders" tone="warn" primary>
+              Send a mechanic →
+            </ActionButton>
+          }
         />
       );
 
@@ -185,6 +208,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="list-ordered"
           tone="warn"
+          eyebrow="Worst now"
           headline={`Worst right now: ${s.name}, score ${s.score}.`}
           detail={
             <>
@@ -215,6 +239,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="list-ordered"
           tone="ok"
+          eyebrow="All clear"
           headline="Nothing needs a vehicle right now."
           detail={
             <>

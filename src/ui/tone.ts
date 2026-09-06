@@ -40,6 +40,17 @@ export interface ToneSpec {
 
 const WHITE = '#ffffff';
 
+/**
+ * The milder half of each warm/cool pair — `warn` under `empty`, `flood-soft`
+ * under `flood`. A "filled" pill or chip in one of these renders as a tint
+ * instead of a solid block, so "nearly full" stays a visible step below "full"
+ * even sitting right next to it. The saturated members (`empty`, `flood`) fill
+ * solid; that contrast is what separates Flooded from Full at a glance.
+ */
+export function isSoftTone(tone: Tone): boolean {
+  return tone === 'warn' || tone === 'flood-soft';
+}
+
 export const TONE: Record<Tone, ToneSpec> = {
   empty: {
     fg: 'var(--color-empty)',

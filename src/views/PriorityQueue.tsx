@@ -1,11 +1,10 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { PageBody, PageHeader } from '../shell/AppShell';
 import { Icon } from '../ui/Icon';
 import { Donut, Legend } from '../ui/charts';
 import {
   ArrivalBanner,
-  Bar,
   Banner,
   Button,
   Card,
@@ -38,10 +37,9 @@ import type { StationRow } from '../data/stationRow';
 import { BOROUGHS, type Borough } from '../data/boroughs';
 import { NEEDS_VEHICLE_THRESHOLD, type StationCategory } from '../model/score';
 import { applyFilters } from '../model/queue';
-import { SERVICE_TARGET, serviceLevel, targetCutIndex } from '../model/service';
 import { QueueStats } from './QueueStats';
 import { FEED_STALE_MS, useDispatch, type SortKey } from '../store/useDispatch';
-import { formatAgo, formatClock } from '../lib/time';
+import { formatClock } from '../lib/time';
 import { durationIndex } from '../data/duration';
 import { useSessionHistory } from '../state/useHistory';
 import { useArrival, useScrollToFocus } from '../state/useFocus';
@@ -131,34 +129,31 @@ const COLUMNS: {
   // "URGENCY" plus a sort caret plus a help icon ran the full 92 with nothing
   // left, so the label sat flush against STATION.
   { key: 'score', label: 'Urgency', width: 112, help: 'score' },
-  // Widest column, because it holds the longest strings — but no longer the
-  // elastic one. 300 fits a long intersection name at 12px with the
-  // broken-hardware subtitle underneath.
+  // Widest column, because it holds the longest strings — and it carries the
+  // borough now too, in the "{borough} · N docks" line under the name. A
+  // dedicated Borough column was a full stack of the word "Manhattan" doing a
+  // narrowing job the dropdown above the table already does; the `borough` sort
+  // key stays in `SortKey` / `valueFor` if a borough-first reading is ever
+  // wanted back.
   { key: 'name', label: 'Station', width: 300 },
-  // Readable, not orderable — and it took two passes to get here. It first
-  // sorted by 'category', i.e. by failure severity, which is the one thing the
-  // word "Borough" does not mean; that got fixed by giving it a real borough
-  // sort. The second question is the one that settles it: given the borough
-  // dropdown sitting directly above this table, what is grouping a worst-first
-  // triage queue by borough actually for? It destroys the ordering the queue
-  // exists to provide, to do a narrowing job the dropdown already does better.
-  //
-  // The 'borough' key stays in `SortKey` and in `valueFor` — it is correct, it
-  // is tested, and reinstating this is one word if a borough-first reading ever
-  // turns out to be wanted.
-  // 104, not 92: "Staten Island" is the longest borough and fixed layout will
-  // no longer widen the column to fit it.
-  { label: 'Borough', width: 104 },
-  // Counts and Fill are the same ordering — fill *is* bikes over slots — so
-  // only one of them gets to be the control.
-  { label: 'Bikes / Open', width: 118, help: 'bikesOpen' },
-  { key: 'fill', label: 'Fill', width: 104, help: 'fill' },
-  { key: 'category', label: 'Status', width: 112, help: 'status' },
-  { key: 'reported', label: 'Updated', width: 108, help: 'updated' },
+  // Counts and Fill were two columns sharing one order — "Fill *is* bikes over
+  // slots" — which made them two headers for one sort. Now one column: the
+  // "bikes / open" pair, sorted by fill. The bar that used to sit beside the
+  // numbers was dropped — the pair already tells the balance story. Headed
+  // "Docks" (which of the two numbers is the open one is left to the ⓘ) rather
+  // than "Bikes / Open", which read as a two-word label for one column.
+  { key: 'fill', label: 'Docks', width: 104, help: 'docks' },
+  // Just the status pill now — the "collect ~50" instruction that used to share
+  // this cell moved to the drawer. 200px for a 60px pill left a canyon between
+  // this header and the next; sized for the header now.
+  { key: 'category', label: 'Status', width: 116, help: 'status' },
+  // Just the feed heartbeat now — a coloured dot and "3m ago". The failing
+  // duration that used to share this cell moved to the score receipt.
+  { key: 'reported', label: 'Updated', width: 112, help: 'updated' },
 ];
 
 /** Columns whose values are words: A→Z is the useful first click, not Z→A. */
-const ALPHABETICAL: SortKey[] = ['name', 'borough'];
+const ALPHABETICAL: SortKey[] = ['name'];
 
 /** Appended after the derived columns — see DispositionCell. */
 const DISPOSITION_COL_WIDTH = 124;
@@ -200,12 +195,6 @@ export function PriorityQueue() {
   const { tracks } = history;
   const durations = useMemo(() => durationIndex(tracks), [tracks]);
 
-  // Service level is a fact about the city, so it is computed from every scored
-  // station rather than from the filtered rows. Narrowing the board to one
-  // borough asks a different question; it does not change how served New York
-  // is, and a headline that moved when you typed in the search box would be
-  // measuring the view instead of the network.
-  const service = useMemo(() => (scored.length > 0 ? serviceLevel(scored) : null), [scored]);
 
   // The situation headline — the single worst thing on the network right now,
   // ranked by severity across every lane. See src/model/situation.ts.
@@ -217,6 +206,10 @@ export function PriorityQueue() {
   }, [runs, dispositions]);
   const raisedFaultIds = useMemo(() => new Set(dispatched), [dispatched]);
   const situationNow = fetchedAtMs ?? Date.now();
+  const hardware = useMemo(
+    () => hardwareTotals(hardwareLoad(scored, situationNow)),
+    [scored, situationNow],
+  );
   const situation = useMemo(
     () =>
       assessSituation({
@@ -224,13 +217,13 @@ export function PriorityQueue() {
         summary,
         lanes,
         networkDocks: networkDocks(scored),
-        hardware: hardwareTotals(hardwareLoad(scored, situationNow)),
+        hardware,
         tracks,
         durations,
         activeRunIds,
         raisedFaultIds,
       }),
-    [phase, summary, lanes, scored, situationNow, tracks, durations, activeRunIds, raisedFaultIds],
+    [phase, summary, lanes, scored, hardware, tracks, durations, activeRunIds, raisedFaultIds],
   );
 
   const filtered = useMemo(() => applyFilters(lanes, filters), [lanes, filters]);
@@ -292,34 +285,6 @@ export function PriorityQueue() {
       showSnoozed ? allRows : allRows.filter((r) => dispositions[r.id] !== 'snoozed'),
     [allRows, dispositions, showSnoozed],
   );
-
-  /**
-   * Where the target line falls in the queue, or null for no line.
-   *
-   * Only drawn on the canonical board. Sorted by name, or narrowed to one
-   * borough, "everything above this line" stops naming the stations the line is
-   * about — the rows above it would no longer be the worst ones, so clearing
-   * them would not reach the target and the line would be a promise the board
-   * cannot keep.
-   *
-   * A line at the very bottom is dropped too: with nothing below it, it marks
-   * no boundary and just adds a rule to the end of the table.
-   */
-  const canonicalOrder =
-    filters.sortKey === 'score' &&
-    filters.sortDir === 'desc' &&
-    filters.categories.length === 0 &&
-    filters.borough === 'all' &&
-    filters.search.trim() === '';
-
-  const cut = useMemo(() => {
-    if (!canonicalOrder || !service) return null;
-    const at = targetCutIndex(
-      queue.map((r) => !r.serving),
-      service.shortfall,
-    );
-    return at !== null && at < queue.length ? at : null;
-  }, [canonicalOrder, queue, service]);
 
   // Stations the search matched that this queue cannot structurally contain.
   const elsewhere = useMemo(
@@ -432,7 +397,7 @@ export function PriorityQueue() {
           <SituationFinding situation={situation} />
         </div>
 
-        <QueueStats summary={summary} service={service} history={history} />
+        <QueueStats summary={summary} hardware={hardware} history={history} />
 
         {/* `items-start` matters: grid rows stretch their children by default,
             so the table card grew to match the taller rail beside it and ended
@@ -606,25 +571,18 @@ export function PriorityQueue() {
                 </thead>
 
                 {firstLoad ? (
-                  <SkeletonRows rows={8} cols={COLUMNS.length} />
+                  <SkeletonRows rows={8} cols={COLUMNS.length + 1} />
                 ) : (
                   <tbody>
-                    {rows.map((row, i) => (
-                      <Fragment key={row.id}>
-                        {cut === safePage * PAGE_SIZE + i && service && (
-                          <TargetLine
-                            cols={COLUMNS.length + 1}
-                            shortfall={service.shortfall}
-                          />
-                        )}
-                        <QueueRow
-                          row={row}
-                          selected={openStationId === row.id}
-                          focused={arrival.focus === row.id}
-                          run={latestRunFor(runs, row.id) ?? undefined}
-                          onOpen={() => openStation(row.id)}
-                        />
-                      </Fragment>
+                    {rows.map((row) => (
+                      <QueueRow
+                        key={row.id}
+                        row={row}
+                        selected={openStationId === row.id}
+                        focused={arrival.focus === row.id}
+                        run={latestRunFor(runs, row.id) ?? undefined}
+                        onOpen={() => openStation(row.id)}
+                      />
                     ))}
                   </tbody>
                 )}
@@ -723,36 +681,6 @@ export function PriorityQueue() {
 
 /* -------------------------------------------------------------------------- */
 
-/**
- * The line across the queue where the network reaches target.
- *
- * Clear the failures above it and the board is at {@link SERVICE_TARGET}; below
- * it is the part of the backlog it is reasonable to leave alone today. That
- * second half is the point. A ranked list with no end implies every row is
- * somebody's job, which is false — there have never been enough vehicles — and a
- * dispatcher who cannot tell "not yet" from "not today" treats the whole board
- * as equally urgent, which is the same as treating none of it as urgent.
- */
-function TargetLine({ cols, shortfall }: { cols: number; shortfall: number }) {
-  return (
-    <tr aria-hidden="true">
-      <td colSpan={cols} className="p-0">
-        <div className="flex items-center gap-2.5 border-y border-dashed border-[var(--color-ok)] bg-[var(--color-ok-bg)] px-3 py-1.5">
-          <Icon name="check" size={11} className="shrink-0 text-[var(--color-ok)]" />
-          <span className="text-[10px] font-medium text-[var(--color-ink-2)]">
-            Restoring the {shortfall.toLocaleString('en-US')} failing{' '}
-            {shortfall === 1 ? 'station' : 'stations'} above this line puts the network at its{' '}
-            {Math.round(SERVICE_TARGET * 100)}% service target.
-          </span>
-          <span className="ml-auto shrink-0 text-[10px] text-[var(--color-ink-3)]">
-            below: acceptable for now
-          </span>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
 function QueueRow({
   row,
   selected,
@@ -766,8 +694,6 @@ function QueueRow({
   run?: DispatchRun;
   onOpen: () => void;
 }) {
-  const broken = brokenSummary(row);
-
   return (
     <tr
       onClick={onOpen}
@@ -781,7 +707,12 @@ function QueueRow({
       }
     >
       <Td>
-        <ScorePeek breakdown={row.breakdown} duration={row.duration} onOpen={onOpen} />
+        <ScorePeek
+          breakdown={row.breakdown}
+          duration={row.duration}
+          signals={hardwareCounts(row)}
+          onOpen={onOpen}
+        />
       </Td>
 
       <Td>
@@ -807,63 +738,51 @@ function QueueRow({
               {row.warning}
             </span>
           ) : (
-            /* The hardware note rides this existing line rather than adding one.
-               In the Status cell it wrapped to three lines at 112px and pushed
-               rows past 100px tall — the detail was worth having and the height
-               was not. Borough is dropped from the subtitle when hardware has
-               something to say: it has its own column two across, so it was the
-               cheapest thing here to give up. */
+            // Hardware faults used to ride this line instead of the borough,
+            // because the Status cell had no room for them. Now that they have
+            // their own Signals column, this always reads the same way.
             <span className="mt-px block truncate text-[10px] text-[var(--color-ink-3)]">
-              {broken === null ? (
-                <>
-                  {row.borough} · <span className="num">{row.docks}</span> docks
-                </>
-              ) : (
-                <>
-                  <span className="num">{row.docks}</span> docks ·{' '}
-                  <span style={{ color: TONE.mute.fg }}>{broken}</span>
-                </>
-              )}
+              {row.borough} · <span className="num">{row.docks}</span> docks
             </span>
           )}
         </button>
       </Td>
 
-      <Td className="text-[11px] text-[var(--color-ink-2)]">{row.borough}</Td>
-
+      {/* Just the counts — the "bikes / open" pair reads the station's balance
+          on its own, so the fill bar that used to sit beside it was noise.
+          Plain left-aligned: an earlier version centred the pair on the slash,
+          which pushed the first number rightward off the column's left edge so
+          it no longer lined up with the "BIKES / OPEN" header above it. Tabular
+          figures keep the slashes near enough without the grid. */}
       <Td>
-        <span className="slash-pair num w-[72px] text-[11px] text-[var(--color-ink)]">
-          <span>{row.bikes === null ? '—' : row.bikes}</span>
+        <span className="num text-[11px] text-[var(--color-ink)]">
+          {row.bikes === null ? '—' : row.bikes}
           <span className="px-1 text-[var(--color-ink-3)]">/</span>
           <span className="text-[var(--color-ink-2)]">{row.openDocks ?? row.docks}</span>
         </span>
       </Td>
 
+      {/* Just the status. The "drop ~40 · +2 dead" instruction that used to
+          trail the pill moved to the drawer's action card — in the queue it was
+          restating the Urgency the row already earned. */}
       <Td>
-        <Bar value={row.fill} tone={row.fillTone} height={4} />
-        {row.fillLabel && (
-          <span className="num mt-1 block text-[10px] text-[var(--color-ink-3)]">{row.fillLabel}</span>
-        )}
+        <StatusPill label={row.status} tone={row.fillTone} />
       </Td>
 
+      {/* Just the feed heartbeat, colour-coded by the same grace window the
+          score uses: green inside 15 min (taken at face value), amber once the
+          reading is old enough to cost the station points, red past the hour.
+          "Failing for Nh" used to ride this line too — a second clock that read
+          as the same kind of age and confused people. It lives on the score
+          receipt, where it is one input among four. */}
       <Td>
-        <StatusPill label={row.status} />
-        <ActionHint row={row} />
-      </Td>
-
-      {/* Two different facts, deliberately not stacked as equals: when the
-          station last spoke, and how long it has been broken. A station can be
-          reporting perfectly and four hours empty. */}
-      <Td>
-        <span className="num block text-[10px] text-[var(--color-ink-3)]">{row.updated}</span>
-        {row.duration?.confident && (
-          <span
-            className="num mt-1 block text-[10px] font-medium"
-            style={{ color: TONE.warn.fg }}
-          >
-            {row.status} {formatAgo(row.duration.minutes * 60_000)}
-          </span>
-        )}
+        <span
+          className="num inline-flex items-center gap-1.5 whitespace-nowrap text-[10px]"
+          style={{ color: TONE[updatedTone(row)].fg }}
+        >
+          <Dot tone={updatedTone(row)} size={5} />
+          {row.updated}
+        </span>
       </Td>
 
       <Td>
@@ -1031,88 +950,38 @@ function DispositionCell({ row }: { row: StationRow }) {
 }
 
 /**
- * The instruction under the diagnosis.
- *
- * The fleet panel has always said "drop 60 bikes"; the queue — the screen
- * somebody actually works from — said only "Empty", leaving the reader to
- * infer both the direction and the amount. Same computation, surfaced where
- * the work happens.
+ * Freshness colour for the Updated cell, read straight off the model's own
+ * staleness classification so the dot and the score's uncertainty penalty can
+ * never disagree: `current` (≤15 min) is green, `aging` (15–60) is amber,
+ * `stale`/`never-reported` red. No breakdown — a fixture row — stays neutral.
  */
-/**
- * The reason a station is small, when hardware is the reason.
- *
- * `usableSlots` is `bikesAvailable + docksAvailable` — dead docks are already
- * out of the fill denominator, so a station with 28 of 40 docks broken is
- * correctly scored against the twelve that work. The score was right; the board
- * just never said why, and "92% full" sends a vehicle to collect bikes from a
- * station that actually needs a mechanic.
- *
- * Returns a short phrase or null. Kept to one clause and no icon because it
- * shares the station's subtitle line: the first version had its own line in the
- * Status cell, where 112px of column turned "60 docks dead · 6 bikes broken"
- * into three wrapped lines and a hundred-pixel row. The detail was worth having;
- * that price was not.
- */
-function brokenSummary(row: StationRow): string | null {
-  const dead = row.raw?.docksDisabled ?? 0;
-  const broken = row.raw?.bikesDisabled ?? 0;
-  if (dead === 0 && broken === 0) return null;
-
-  // Both, only when both are worth naming — otherwise the longer label wins the
-  // space, since a station with 60 dead docks does not need to be told about
-  // its one flat tyre on the same line.
-  if (dead > 0 && broken > 0) return `${dead} docks · ${broken} bikes broken`;
-  if (dead > 0) return `${dead} dock${dead === 1 ? '' : 's'} dead`;
-  return `${broken} bike${broken === 1 ? '' : 's'} broken`;
+function updatedTone(row: StationRow): Tone {
+  switch (row.breakdown?.staleness.reason) {
+    case 'current':
+      return 'ok';
+    case 'aging':
+      return 'warn';
+    case 'stale':
+    case 'never-reported':
+      return 'empty';
+    default:
+      return 'mute';
+  }
 }
 
-function ActionHint({ row }: { row: StationRow }) {
-  const action = row.action;
-  if (!action || action.kind === 'none') return null;
-
-  if (action.kind === 'mechanic') {
-    return (
-      <Link
-        to="/maintenance/orders"
-        onClick={(e) => e.stopPropagation()}
-        className="mt-1 block text-[10px] underline-offset-2 hover:underline"
-        style={{ color: TONE.empty.fg }}
-      >
-        no vehicle can fix
-      </Link>
-    );
-  }
-
-  const drop = action.kind === 'drop';
-  const pickup = row.pickup;
-  return (
-    <>
-      <span
-        className="num mt-1 block text-[10px]"
-        style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}
-      >
-        {drop ? 'drop' : 'collect'} ~{action.bikes}
-      </span>
-
-      {/* The second errand at the same stop. Only the confirmed-dead count is
-          shown: the reported-but-unchecked ones are a mechanic's call, and a
-          driver cannot act on them. Immediate pickups are tinted, routine ones
-          stay grey — on a row this dense the colour is the only thing that
-          separates "take these now" from "if there is room". */}
-      {pickup && pickup.load > 0 && (
-        <span
-          className="num mt-0.5 block text-[10px]"
-          style={{
-            color:
-              pickup.urgency === 'immediate' ? TONE.warn.fg : 'var(--color-ink-3)',
-          }}
-          title={pickup.reason}
-        >
-          +{pickup.load} dead{pickup.urgency === 'immediate' ? ' now' : ''}
-        </span>
-      )}
-    </>
-  );
+/**
+ * Dock and bike hardware the operator's own feed reports broken here.
+ *
+ * Had its own "Signals" column until the count of broken bikes read better as
+ * one line of the score hover — it is a mechanic's problem, not a scoring
+ * input, so it belongs beside the "why" rather than in a column of its own.
+ * Still the same two fields the Hardware & Docks screen ranks stations by.
+ */
+function hardwareCounts(row: StationRow): { dead: number; broken: number } {
+  return {
+    dead: row.raw?.docksDisabled ?? 0,
+    broken: row.raw?.bikesDisabled ?? 0,
+  };
 }
 
 /* ---------------------------------------------------------------------------

@@ -31,10 +31,11 @@ export const SCORE_BANDS: { label: string; gloss: string; tone: Tone }[] = [
  * Definitions for every column whose header is not self-explanatory.
  *
  * The test applied: could somebody read the header and be confidently wrong?
- * "Bikes / Open" invites "open stations". "Fill" does not say fill of what.
- * "Condition" and "Fault" sit next to each other and sound like synonyms.
- * Columns that pass the test — Station, Borough, Rank — get nothing, because
- * an icon on an obvious header is noise that trains people to ignore icons.
+ * "Docks" does not say which of its two numbers is the open one. "Fill" does
+ * not say fill of what. "Condition" and "Fault" sit next to each other and
+ * sound like synonyms. Columns that pass the test — Station, Borough, Rank —
+ * get nothing, because an icon on an obvious header is noise that trains
+ * people to ignore icons.
  */
 
 export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
@@ -67,16 +68,9 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
     values: SCORE_BANDS,
   },
 
-  bikesOpen: {
-    what: 'Bikes available right now, over docks standing empty right now. Both are counts of physical objects at the station.',
-    good: 'Roughly even is healthy. "0 / 40" means nobody can rent; "40 / 0" means nobody can return.',
-    values: [
-      { label: 'Open', gloss: 'free docks — not open stations' },
-      {
-        label: 'Why not capacity',
-        gloss: 'hundreds of stations disagree with their own nameplate, so the board counts what is reported working',
-      },
-    ],
+  docks: {
+    what: 'The left number is bikes parked and ready to rent; the right is docks standing open.',
+    good: '"0 / 40" means nobody can rent here; "40 / 0" means nobody can return. Sorting orders by fill — the two counts are one fact from opposite ends. The board counts what the feed reports working, not the nameplate, because hundreds of stations disagree with their own.',
   },
 
   fill: {
@@ -101,8 +95,13 @@ export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
   },
 
   updated: {
-    what: 'How long ago this station last reported its own counts to the feed.',
-    good: 'Under 15 minutes is taken at face value. Older readings add an uncertainty penalty; past an hour the station is dropped from the ranking.',
+    what: 'How long ago this station last sent its own counts to the feed — the heartbeat, not how long it has been failing (that is on the score receipt).',
+    good: 'The dot colours match the score: green readings are taken at face value, amber ones are old enough to add an uncertainty penalty, and past an hour the station drops off the ranking entirely.',
+    values: [
+      { label: 'Fresh', gloss: 'reported within the last 15 minutes', tone: 'ok' },
+      { label: 'Aging', gloss: '15–60 minutes — the score now carries a penalty for it', tone: 'warn' },
+      { label: 'Not reporting', gloss: 'silent over an hour — routed off this board', tone: 'empty' },
+    ],
   },
 
   thresholdExcess: {

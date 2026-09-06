@@ -1,36 +1,75 @@
-import type { ReactNode } from 'react';
 import { ScoreBadge } from './primitives';
 import { TipAction, TipBody, TipTitle, Tooltip } from './Tooltip';
-import { TONE } from './tone';
-import { CAPACITY_WEIGHT_CAP, type ScoreBreakdown } from '../model/score';
+import { TONE, type Tone } from './tone';
+import { type ScoreBreakdown, type Signal } from '../model/score';
 import { laneOf } from '../model/triage';
-import { formatAgo, formatReportedAge } from '../lib/time';
+import { formatReportedAge } from '../lib/time';
 import { applyDuration, type Duration } from '../data/duration';
 import { VERDICT_LINE, VERDICT_TONE, verdictFor } from '../data/verdict';
 
+/** Operator-reported hardware faults at the station — passed in, not in the
+ *  breakdown, because they shrink the fill denominator rather than scoring
+ *  directly. Optional: a caller without the counts omits the Signals block. */
+export interface PeekSignals {
+  broken: number;
+  dead: number;
+}
+
+const SIGNAL_TONE: Record<Signal, Tone> = {
+  empty: 'empty',
+  full: 'flood',
+  outage: 'ink',
+  ok: 'ok',
+};
+
+/** The one-line "why", warm for empty-side, cool for full-side. */
+function supplyPhrase(b: ScoreBreakdown): string {
+  const pct = b.fill.ratio === null ? null : Math.round(b.fill.ratio * 100);
+  switch (b.category) {
+    case 'empty':
+      return 'Empty — no bikes anyone can rent';
+    case 'full':
+      return 'Full — no docks anyone can return to';
+    case 'starving':
+      return pct === null ? 'Almost out of bikes' : `Almost out of bikes — ${pct}% full`;
+    case 'flooded':
+      return pct === null ? 'Almost out of docks' : `Almost out of docks — ${pct}% full`;
+    case 'outage':
+      return 'Outage — the operator has closed one direction';
+    case 'unusable':
+      return 'A brick — not renting and not returning';
+    case 'healthy':
+      return pct === null ? 'Roughly balanced' : `Roughly balanced — ${pct}% full`;
+    default:
+      return '';
+  }
+}
+
 /**
- * The score, with its reasoning one hover away.
+ * The score, with the quick read one hover away.
  *
  * Opening a drawer to learn why a number is 88 is a fair price once. It is not
- * a fair price on the fourth row of a thousand, which is where a dispatcher
- * actually lives — so the arithmetic gets a hover layer and the drawer keeps
- * the click.
+ * a fair price on the fourth row of a thousand — so the hover carries the parts
+ * a dispatcher scans for (which way it failed, what hardware is down, whether
+ * to go now) and the click opens the full derivation.
  *
  * The badge is the trigger for both. Wrapping a larger cell would mean the
  * tooltip fires while you are aiming past it, and the two layers would stop
  * describing the same thing.
  */
-
 export function ScorePeek({
   breakdown,
   duration,
+  signals,
   size = 'md',
   onOpen,
-  openLabel = 'Opens the score breakdown',
+  openLabel = 'Opens the full score breakdown',
 }: {
   breakdown: ScoreBreakdown | undefined;
   /** Must match what the row was ranked by, or the badge contradicts the order. */
   duration?: Duration | null;
+  /** Operator-reported broken hardware — shows as the Signals block. */
+  signals?: PeekSignals;
   size?: 'sm' | 'md' | 'lg';
   /** Omit entirely when there is nowhere to go — see the note below. */
   onOpen?: () => void;
@@ -43,13 +82,12 @@ export function ScorePeek({
   }
 
   const lane = laneOf(breakdown);
-  const { capacity, staleness } = breakdown;
+  const { staleness } = breakdown;
 
   // The badge has to show the number the queue sorted on. Rendering the raw
   // breakdown score here put a station at the top of the board wearing a lower
   // number than the row beneath it.
   const adjusted = applyDuration(breakdown, duration ?? undefined);
-  const durationPts = duration?.confident ? duration.points : 0;
   const score = lane === 'unverified' || !breakdown.needsVehicle ? breakdown.score : adjusted.score;
   const verdict = verdictFor(breakdown, score);
 
@@ -66,43 +104,43 @@ export function ScorePeek({
         </TipBody>
       ) : (
         <>
-          <dl className="mt-2 flex flex-col gap-1">
-            <PeekLine label={breakdown.baseRule} value={breakdown.base} />
-            <PeekLine
-              label={`Capacity weight ×${capacity.weight.toFixed(2)}${capacity.capped ? ` (capped at ${CAPACITY_WEIGHT_CAP})` : ''}`}
-              value={capacity.contribution}
-              signed
-            />
-            <PeekLine
-              label={
-                staleness.reason === 'current'
-                  ? 'Reading is fresh — no penalty'
-                  : `Reading is ${formatReportedAge(staleness.ageMinutes)} old`
-              }
-              value={staleness.penalty}
-              signed
-            />
-            {durationPts > 0 && duration && (
-              <PeekLine
-                label={`Failing for ${formatAgo(duration.minutes * 60_000)}`}
-                value={durationPts}
-                signed
-              />
-            )}
-          </dl>
+          {/* Which way it failed. The full arithmetic that turns this into a
+              number lives behind the click — a dispatcher scanning the column
+              needs the direction and the verdict, not the derivation. */}
+          <p
+            className="mt-1 text-[11px] leading-snug font-semibold"
+            style={{ color: TONE[SIGNAL_TONE[breakdown.signal]].fg }}
+          >
+            {supplyPhrase(breakdown)}
+          </p>
 
-          <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-[var(--color-line-soft)] pt-1.5">
-            <span className="text-[10px] text-[var(--color-ink-2)]">Total</span>
-            <span className="num text-[11px] font-semibold text-[var(--color-ink)]">
-              {score} / 100
-            </span>
-          </div>
+          {/* The Signals column, moved into the hover: broken hardware is a
+              mechanic's problem, not a scoring input, so it reads better beside
+              the "why" than in a column of its own. */}
+          {signals && (
+            <div className="mt-2 border-t border-[var(--color-line-soft)] pt-2">
+              <p className="eyebrow text-[9px]">Signals</p>
+              {signals.broken > 0 || signals.dead > 0 ? (
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  {signals.broken > 0 && (
+                    <PeekChip label={`${signals.broken} broken`} tone="mute" />
+                  )}
+                  {signals.dead > 0 && <PeekChip label={`${signals.dead} dead`} tone="empty" />}
+                  <span className="text-[9.5px] text-[var(--color-ink-3)]">operator-reported</span>
+                </div>
+              ) : (
+                <p className="mt-1 text-[10px] text-[var(--color-ink-3)]">
+                  No broken bikes or dead docks reported.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Classified by the same function the drawer uses, so the eight-word
               version and the paragraph version cannot reach opposite verdicts
               about one station. */}
           <p
-            className="mt-1.5 text-[10px] leading-snug"
+            className="mt-2 border-t border-[var(--color-line-soft)] pt-2 text-[10px] leading-snug"
             style={{ color: TONE[VERDICT_TONE[verdict]].fg }}
           >
             {VERDICT_LINE[verdict]}
@@ -141,24 +179,15 @@ export function ScorePeek({
   );
 }
 
-function PeekLine({
-  label,
-  value,
-  signed = false,
-}: {
-  label: ReactNode;
-  value: number;
-  signed?: boolean;
-}) {
+/** A small bordered count chip, matching the Signals column's own pills. */
+function PeekChip({ label, tone }: { label: string; tone: Tone }) {
+  const t = TONE[tone];
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="min-w-0 text-[10px] leading-snug text-[var(--color-ink-2)]">{label}</dt>
-      <dd
-        className={`num shrink-0 text-[10px] ${value === 0 ? 'text-[var(--color-ink-3)]' : 'font-semibold text-[var(--color-ink)]'}`}
-      >
-        {signed && value > 0 ? '+' : ''}
-        {value}
-      </dd>
-    </div>
+    <span
+      className="num whitespace-nowrap rounded border px-1.5 py-px text-[9.5px] font-medium"
+      style={{ color: t.fg, backgroundColor: t.bg, borderColor: t.line }}
+    >
+      {label}
+    </span>
   );
 }
