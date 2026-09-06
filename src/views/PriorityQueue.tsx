@@ -188,6 +188,7 @@ export function PriorityQueue() {
   const triage = useConsole((s) => s.triage);
   const runs = useConsole((s) => s.runs);
   const dispatched = useConsole((s) => s.dispatched);
+  const workOrders = useConsole((s) => s.workOrders);
   const [showSnoozed, setShowSnoozed] = useState(false);
   const [method, setMethod] = useState(false);
 
@@ -209,6 +210,16 @@ export function PriorityQueue() {
   const hardware = useMemo(
     () => hardwareTotals(hardwareLoad(scored, situationNow)),
     [scored, situationNow],
+  );
+
+  // The mechanic's open backlog, for the stat row. Clocked off the wall rather
+  // than the feed so its breach count matches the Maintenance rail card below,
+  // which does the same — one screen must not disagree with itself about how
+  // many orders have blown their target.
+  const maintenanceNow = Date.now();
+  const maintenance = useMemo(
+    () => backlog(workOrders, maintenanceNow),
+    [workOrders, maintenanceNow],
   );
   const situation = useMemo(
     () =>
@@ -397,7 +408,12 @@ export function PriorityQueue() {
           <SituationFinding situation={situation} />
         </div>
 
-        <QueueStats summary={summary} hardware={hardware} history={history} />
+        <QueueStats
+          summary={summary}
+          hardware={hardware}
+          maintenance={maintenance}
+          history={history}
+        />
 
         {/* `items-start` matters: grid rows stretch their children by default,
             so the table card grew to match the taller rail beside it and ended

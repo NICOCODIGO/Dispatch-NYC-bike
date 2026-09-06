@@ -2,13 +2,14 @@ import { StatCard } from '../ui/primitives';
 import { TONE, type Tone } from '../ui/tone';
 import type { NetworkSummary } from '../model/summary';
 import type { HardwareTotals } from '../data/hardware';
+import type { BacklogStats } from '../model/workOrder';
 import { recoveryBand, recoveryRate, type RecoveryBand } from '../model/verify';
 import type { SessionHistory } from '../state/useHistory';
 import { formatAgo } from '../lib/time';
 import { VEHICLES_ACTIVE, VEHICLES_TOTAL } from '../mock/data';
 
 /**
- * The five headline numbers above the queue.
+ * The six headline numbers above the queue.
  *
  * Every card carries three layers, because a number alone is a quiz: the label
  * says what it is in plain words, the footer says what it means, and the hint
@@ -29,6 +30,13 @@ import { VEHICLES_ACTIVE, VEHICLES_TOTAL } from '../mock/data';
  * docks, which are a real field problem and belong beside the other health
  * numbers.
  *
+ * "Sent to mechanic" is the newest, and it is the other crew's workload sitting
+ * next to the vehicle's: "Needs rebalancing" is the queue this screen owns,
+ * "Dead docks" is the damage that queue is not allowed to touch, and this is how
+ * much of that damage has actually been turned into a work order somebody is on
+ * the hook for. It is a count of open orders, not of broken stations — the feed
+ * says what is broken, a person decides what gets a truck.
+ *
  * And three cards used to filter the table while three navigated — the same
  * shape carrying two contracts. Now every interactive card is a door to the
  * screen that owns the number, and the ones with no such screen are inert.
@@ -36,10 +44,12 @@ import { VEHICLES_ACTIVE, VEHICLES_TOTAL } from '../mock/data';
 export function QueueStats({
   summary,
   hardware,
+  maintenance,
   history,
 }: {
   summary: NetworkSummary | null;
   hardware: HardwareTotals | null;
+  maintenance: BacklogStats | null;
   history: SessionHistory;
 }) {
   const dash = (n: number | undefined) => (summary ? (n ?? 0).toLocaleString('en-US') : '—');
@@ -47,7 +57,7 @@ export function QueueStats({
   const recovery = recoveryFor(history);
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       <StatCard
         label="Needs rebalancing"
         value={
@@ -78,6 +88,23 @@ export function QueueStats({
         to="/maintenance/hardware"
         actionLabel="Open hardware and docks."
         hint="Docks the operator's own feed reports out of service — they can neither take a bike nor release one, so they quietly shrink every fill number on this board. A vehicle cannot re-seat a dock; these are a mechanic's job and are ranked on the Hardware & Docks screen."
+      />
+      <StatCard
+        label="Sent to mechanic"
+        value={maintenance ? num(maintenance.open) : '—'}
+        tone={maintenance && maintenance.breached > 0 ? 'empty' : 'ink'}
+        foot={
+          maintenance && maintenance.breached > 0
+            ? `${num(maintenance.breached)} past response target`
+            : maintenance && maintenance.open === 0
+              ? 'nothing outstanding'
+              : maintenance && maintenance.unassigned > 0
+                ? `${num(maintenance.unassigned)} not yet assigned`
+                : 'all inside response target'
+        }
+        to="/maintenance/orders"
+        actionLabel="Open maintenance operations."
+        hint="Open work orders for a technician — dock repairs, battery swaps, dead-bike pickups. The feed says what is broken; a person turns that into an order somebody owns. A vehicle full of bikes cannot close any of these, which is why they are counted apart from the rebalancing queue and from the dead-dock total beside it."
       />
       <StatCard
         label="Vehicles available"

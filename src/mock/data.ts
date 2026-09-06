@@ -346,8 +346,43 @@ export const SCORE_NOTE =
  */
 export type VehicleState = 'en-route' | 'loading' | 'on-site' | 'idle';
 
+/**
+ * What kind of body the vehicle has, and therefore how much it holds.
+ *
+ * This existed as prose for a long time before it existed as data. Three places
+ * told the reader the fleet was mixed — the `/fleet/trucks` → `/fleet/vehicles`
+ * rename, the Hardware copy, the Vehicles-available hint that says outright
+ * "vans and box trucks both count" — while every entry below carried the same
+ * `capacity: 48`. A claim the model cannot back is worse than no claim: it
+ * survives right up until somebody plans a shift around it.
+ */
+export type VehicleKind = 'van' | 'box-truck';
+
+export const VEHICLE_KIND_LABEL: Record<VehicleKind, string> = {
+  van: 'Van',
+  'box-truck': 'Box truck',
+};
+
+/**
+ * Racked capacity by body, in bikes.
+ *
+ * **Guesses**, like the SLA targets, and labelled as such wherever they surface.
+ * A transit van with a two-tier rack is realistically high teens; a box truck is
+ * the vehicle every bikeshare operator's photos actually show and carries two to
+ * three times that. The ratio is what matters here — it is the difference
+ * between "any free vehicle will do" and "that job needs the truck".
+ */
+export const VEHICLE_KIND_CAPACITY: Record<VehicleKind, number> = {
+  van: 18,
+  'box-truck': 48,
+};
+
+const VAN = VEHICLE_KIND_CAPACITY.van;
+const BOX = VEHICLE_KIND_CAPACITY['box-truck'];
+
 export interface Vehicle {
   id: string;
+  kind: VehicleKind;
   state: VehicleState;
   /** Home base, so dispatch runs can be rolled up per depot. */
   depot: string;
@@ -355,6 +390,8 @@ export interface Vehicle {
   where: string;
   when?: string;
   load: number;
+  /** Always `VEHICLE_KIND_CAPACITY[kind]` — carried on the row so the dozen
+   *  places that read it do not each have to know about body types. */
   capacity: number;
   active?: string;
   eta?: string;
@@ -382,12 +419,13 @@ export interface Vehicle {
 export const VEHICLES: Vehicle[] = [
   {
     id: '#4',
+    kind: 'box-truck',
     depot: 'E 18 St',
     state: 'en-route',
     where: '→ Columbus Ave & W 72',
     when: 'ETA 6 min',
     load: 26,
-    capacity: 48,
+    capacity: BOX,
     active: 'W 72 St & Columbus Ave',
     eta: 'ETA 6 min',
     lat: 40.778,
@@ -396,57 +434,65 @@ export const VEHICLES: Vehicle[] = [
   },
   {
     id: '#7',
+    kind: 'box-truck',
     depot: 'E 18 St',
     state: 'loading',
     where: 'Depot · 1 Ave & E 18',
     when: 'Departs in ~12 min',
     load: 18,
-    capacity: 48,
+    capacity: BOX,
     lat: 40.734,
     lon: -73.98,
     freeInMin: 35,
   },
   {
     id: '#1',
+    kind: 'box-truck',
     depot: 'E 18 St',
     state: 'on-site',
     where: 'Broadway & W 36 St',
     when: 'unloading, ~4 min left',
     load: 31,
-    capacity: 48,
+    capacity: BOX,
     lat: 40.752,
     lon: -73.988,
     freeInMin: 4,
   },
   {
+    // A van on a run, and nearly full at 12 of 18 — the case that makes the
+    // body type matter. Offered a station needing 30 collected it can take
+    // six, which is a different answer from what a truck would give.
     id: '#3',
+    kind: 'van',
     depot: 'Sunset Park',
     state: 'en-route',
     where: 'Atlantic Ave & 4 Ave',
     load: 12,
-    capacity: 48,
+    capacity: VAN,
     lat: 40.684,
     lon: -73.978,
     freeInMin: 22,
   },
   {
     id: '#8',
+    kind: 'box-truck',
     depot: 'Queens Blvd',
     state: 'en-route',
     where: 'Queens Blvd & 46 St',
     load: 22,
-    capacity: 48,
+    capacity: BOX,
     lat: 40.744,
     lon: -73.921,
     freeInMin: 27,
   },
   {
     id: '#2',
+    kind: 'van',
     depot: 'Greenpoint',
     state: 'idle',
     where: 'Depot · Greenpoint',
     load: 0,
-    capacity: 48,
+    capacity: VAN,
     lat: 40.73,
     lon: -73.954,
     freeInMin: 0,
@@ -457,22 +503,24 @@ export const VEHICLES: Vehicle[] = [
     // "an idle vehicle carrying 26 is a different asset from an idle vehicle
     // carrying none" was a true statement about a case the data never produced.
     id: '#5',
+    kind: 'box-truck',
     depot: 'Sunset Park',
     state: 'idle',
     where: 'Depot · Sunset Park',
     load: 26,
-    capacity: 48,
+    capacity: BOX,
     lat: 40.645,
     lon: -74.01,
     freeInMin: 0,
   },
   {
     id: '#6',
+    kind: 'van',
     depot: 'Mott Haven',
     state: 'idle',
     where: 'Depot · Mott Haven',
     load: 0,
-    capacity: 48,
+    capacity: VAN,
     lat: 40.809,
     lon: -73.923,
     freeInMin: 0,

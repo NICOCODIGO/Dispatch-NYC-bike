@@ -314,3 +314,78 @@
     animation: fade-in 200ms ease-out !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Network Status Map. The station dots are a GPU layer with no DOM; the only
+   markers are the handful of vehicles, styled here.
+--------------------------------------------------------------------------- */
+/* Four channels in forty pixels: silhouette = body type, colour = state,
+   fill level = load, text = id. `--accent` is set per marker from the state
+   tone. */
+.map-vehicle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  transition: opacity 160ms ease-out;
+}
+
+.map-vehicle-body {
+  position: relative;
+  overflow: hidden;
+  flex: none;
+  width: 12px;
+  height: 11px;
+  border: 1.5px solid var(--accent, var(--color-ink));
+  border-radius: 2px;
+  background: var(--color-surface);
+  box-shadow: 0 1px 4px rgb(43 38 33 / 28%);
+  transition: transform 120ms ease-out;
+}
+
+/* A box truck is longer and carries a cab block at the front; a van is a plain
+   body. Reads as two different vehicles at 11px, which a label never did. */
+.map-vehicle-body--wide {
+  width: 21px;
+  border-left-width: 5px;
+}
+
+.map-vehicle-fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--accent, var(--color-ink));
+  opacity: 0.5;
+}
+
+.map-vehicle-id {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 0 3px;
+  box-shadow: 0 1px 4px rgb(43 38 33 / 12%);
+}
+
+.map-vehicle:hover .map-vehicle-body,
+.map-vehicle:focus-visible .map-vehicle-body {
+  transform: scale(1.18);
+}
+
+/* Mapbox's own chrome, pulled into the console's palette. */
+.mapboxgl-ctrl-group {
+  border: 1px solid var(--color-line) !important;
+  box-shadow: 0 1px 6px rgb(43 38 33 / 10%) !important;
+}
+
+.mapboxgl-ctrl-attrib {
+  font-size: 9px;
+}

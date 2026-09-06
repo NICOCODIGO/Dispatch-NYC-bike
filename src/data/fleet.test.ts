@@ -14,6 +14,7 @@ import {
 function vehicle(over: Partial<Vehicle> = {}): Vehicle {
   return {
     id: '#1',
+    kind: 'box-truck',
     depot: 'E 18 St',
     state: 'idle',
     where: 'Depot',

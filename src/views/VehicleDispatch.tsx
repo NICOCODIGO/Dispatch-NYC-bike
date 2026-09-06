@@ -13,6 +13,7 @@ import {
 } from '../ui/primitives';
 import { TONE, type Tone } from '../ui/tone';
 import { useConsole, type VehicleAssignment } from '../state/useConsole';
+import { useArrival } from '../state/useFocus';
 import { useDispatch } from '../store/useDispatch';
 import { rebalanceDemand, vehicleAction } from '../data/insights';
 import {
@@ -30,6 +31,7 @@ import { NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import {
   VEHICLES,
   VEHICLE_FOCUS,
+  VEHICLE_KIND_LABEL,
   VEHICLE_STATE_LABEL,
   VEHICLE_STATE_AVAILABILITY,
   VEHICLE_STATE_CYCLE,
@@ -48,8 +50,16 @@ import { cn } from '../lib/cn';
  * cards would be eight things to read before finding the one that matters.
  */
 export function VehicleDispatch() {
-  const [focused, setFocused] = useState(VEHICLE_FOCUS.id);
+  const arrival = useArrival();
+  const [focused, setFocused] = useState(arrival.focus ?? VEHICLE_FOCUS.id);
   const assignments = useConsole((s) => s.assignments);
+
+  // Arriving from the map's vehicle card should open that vehicle, not whichever
+  // one the fixture happens to name. Same `?focus=` mechanism every other
+  // cross-screen link uses, so Back works.
+  useEffect(() => {
+    if (arrival.focus) setFocused(arrival.focus);
+  }, [arrival.focus]);
 
   // Dispatching from the queue should be visible the moment you arrive here.
   // Without this the assignment existed but sat inside a collapsed row, so the
@@ -86,9 +96,26 @@ export function VehicleDispatch() {
    * Dividing by one vehicle instead gives a number that means what it says and
    * does not silently change when a vehicle goes on or off shift — the work is
    * the work regardless of who is available to do it.
+   *
+   * "One vehicle" is the biggest body, now that the fleet is mixed: a load is a
+   * full box truck, and the van count is a fact about who can take the job, not
+   * about how big the job is.
    */
   const vehicleCapacity = Math.max(...VEHICLES.map((t) => t.capacity));
   const loads = vehicleCapacity > 0 ? Math.ceil(demand.relocatable / vehicleCapacity) : 0;
+
+  /**
+   * Parked carrying capacity, summed rather than multiplied.
+   *
+   * This was `idle × the largest vehicle`, which was exactly right while every
+   * body held 48 and became a 60% overstatement the moment vans entered the
+   * fixture — three idle vans would have been reported as 144 bikes of waiting
+   * capacity when the true figure is 54.
+   */
+  const idleCapacity = VEHICLES.filter((t) => stateOf(t) === 'idle').reduce(
+    (sum, t) => sum + t.capacity,
+    0,
+  );
 
   /**
    * Availability, and a candidate job for everyone who can take one.
@@ -135,7 +162,7 @@ export function VehicleDispatch() {
           demand={demand}
           idle={idle}
           loads={loads}
-          vehicleCapacity={vehicleCapacity}
+          idleCapacity={idleCapacity}
           needsVehicle={summary?.needsVehicle ?? 0}
         />
 
@@ -200,14 +227,15 @@ function WorkloadFinding({
   demand,
   idle,
   loads,
-  vehicleCapacity,
+  idleCapacity,
   needsVehicle,
 }: {
   demand: ReturnType<typeof rebalanceDemand>;
   idle: number;
   /** Outstanding work in single-vehicle loads. Independent of fleet size. */
   loads: number;
-  vehicleCapacity: number;
+  /** Bikes the parked vehicles could carry between them. */
+  idleCapacity: number;
   needsVehicle: number;
 }) {
   if (needsVehicle === 0) {
@@ -261,8 +289,8 @@ function WorkloadFinding({
             <>
               {' '}
               <strong className="font-semibold text-[var(--color-ink)]">
-                {(idle * vehicleCapacity).toLocaleString('en-US')} bikes of carrying capacity is parked
-                at a depot right now.
+                {idleCapacity.toLocaleString('en-US')} bikes of carrying capacity is parked at a
+                depot right now.
               </strong>
             </>
           )}{' '}
@@ -495,7 +523,15 @@ function ExpandedVehicle({ vehicle }: { vehicle: Vehicle }) {
       <div className="flex items-center gap-3 px-3.5 pt-3.5 pb-3">
         <VehicleGlyph />
         <div className="min-w-0 flex-1">
-          <p className="num text-[13px] font-semibold text-[var(--color-ink)]">Vehicle {vehicle.id}</p>
+          <p className="num text-[13px] font-semibold text-[var(--color-ink)]">
+            Vehicle {vehicle.id}
+            {/* The body type is a hard constraint on what this vehicle can be
+                asked to do — a van holds a third of a truck — so it belongs on
+                the name line, not buried beside the capacity bar. */}
+            <span className="ml-1.5 text-[10px] font-medium text-[var(--color-ink-3)]">
+              {VEHICLE_KIND_LABEL[vehicle.kind]}
+            </span>
+          </p>
           <p className="mt-px text-[11px]" style={{ color: TONE[tone].fg }}>
             {VEHICLE_STATE_LABEL[state]}
             {!assigned && vehicle.eta && ` · ${vehicle.eta}`}
@@ -710,7 +746,8 @@ function CollapsedVehicle({
             <TipTitle>Vehicle {vehicle.id}</TipTitle>
             <TipBody>
               <span className="block">
-                {VEHICLE_STATE_LABEL[state]} · free {formatFreeIn(row.freeInMin)}
+                {VEHICLE_KIND_LABEL[vehicle.kind]} · {VEHICLE_STATE_LABEL[state]} · free{' '}
+                {formatFreeIn(row.freeInMin)}
               </span>
               <span className="mt-1 block">
                 Carrying {vehicle.load} of {vehicle.capacity} · {vehicle.capacity - vehicle.load} slots free

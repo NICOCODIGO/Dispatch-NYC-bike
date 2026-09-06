@@ -129,6 +129,18 @@ export const DEFINITIONS: Record<string, Definition> = {
     plain:
       'Moving bikes around the city so they are where riders want them. Most of a morning’s bikes end up downhill and somebody has to carry them back.',
   },
+  'swap pair': {
+    plain:
+      'Two stations a few blocks apart where one is overflowing and the other is empty. The bikes one needs are already standing at the other, so the fix is one short hop rather than a run from the depot.',
+    mechanism:
+      'Both must be over the dispatch line, one full-side and one empty-side, and within 500 m of each other. The move is the smaller of the two stations’ needs. Shown only on the map — the ranked queue lists one station at a time and has no row for a pair.',
+  },
+  'bikes to move': {
+    plain:
+      'How many bikes a vehicle would add or take away at this station to leave it half full. It is the size of the job, not the size of the station.',
+    mechanism:
+      'Distance from the midpoint of the slots the station reports usable. Drives the dot size on the map, so a big dot is a big load rather than a big rack.',
+  },
   mechanic: {
     plain:
       'A technician who repairs broken hardware — a jammed dock, a frozen kiosk, a station that will not accept rentals. Sending a vehicle to these is a wasted trip.',

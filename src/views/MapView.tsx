@@ -7,33 +7,39 @@ import {
   Banner,
   Bar,
   Button,
-  FilterChip,
   ScoreBadge,
   SearchInput,
-  Segmented,
+  Select,
   StatusPill,
 } from '../ui/primitives';
 import { MAPBOX_TOKEN } from '../ui/mapToken';
-import { CRITICAL_THRESHOLD, NEEDS_VEHICLE_THRESHOLD } from '../model/score';
 import type { StationRow } from '../data/stationRow';
-
-/**
- * Loaded on demand. `mapbox-gl` is 1.6 MB — larger than the whole rest of the
- * console — and most sessions never leave the queue. Pulling it eagerly took
- * the main bundle from 250 kB to 2.3 MB to serve a screen nobody had opened.
- */
-const StationMap = lazy(() => import('../ui/StationMap'));
+import type { MapVehicle } from '../ui/StationMap';
+import {
+  TIER_LABEL,
+  stationFeatures,
+  swapFeatures,
+  tierCounts,
+  tierOf,
+  type MapTier,
+} from '../data/mapFeatures';
+import { findSwapPairs } from '../data/swaps';
+import type { ScoredStation } from '../model/summary';
 import { useDispatch } from '../store/useDispatch';
-import { toStationRow } from '../data/adapt';
 import { focusHref, useArrival } from '../state/useFocus';
 import { TONE, type Tone } from '../ui/tone';
 import { useConsole } from '../state/useConsole';
 import { cn } from '../lib/cn';
+import { BOROUGHS, type Borough } from '../data/boroughs';
+import { formatFreeIn } from '../data/fleet';
 import {
   STATIONS,
   TOTAL_STATIONS,
-  VEHICLES_ACTIVE,
-  VEHICLES_TOTAL,
+  VEHICLES,
+  VEHICLE_KIND_CAPACITY,
+  VEHICLE_KIND_LABEL,
+  VEHICLE_STATE_LABEL,
+  VEHICLE_STATE_TONE,
   ZONES,
   stationById,
 } from '../mock/data';
@@ -41,79 +47,84 @@ import {
 /**
  * The network, geographically.
  *
- * A note on the basemap: the comp for this screen shows a rendered aerial of
- * Manhattan. No such asset exists in the repo and the app makes no runtime
- * requests, so the ground here is a drawn plan — avenues, cross streets, the
- * park, the rivers — carrying the same palette and the same marker language.
- * It is deliberately schematic rather than a bad tracing of real geography.
- * Swapping in Mapbox/MapLibre later means replacing <Basemap> and giving the
- * markers real lat/lon; nothing else on the screen changes.
+ * Every station comes off one GeoJSON source rendered as GPU circle layers —
+ * see `ui/StationMap` for the paint and `data/mapFeatures` for the encoding.
+ * This screen owns the controls around it: the borough scope (shared with the
+ * Rebalancing board), the jump box, and the legend, which doubles as the tier
+ * filter.
+ *
+ * The dot's *colour* is its urgency band and its *size* is the bikes a vehicle
+ * would move there — capacity is deliberately not on the map, because a big
+ * healthy station is not a big problem.
  */
 
-interface Marker {
-  x: number;
-  y: number;
-  tone: Tone;
-  /** Pins carrying a station open its receipt; the rest are network texture. */
-  stationId?: string;
-}
+/** Legend order is worst-first; paint order (in StationMap) is the reverse. */
+const LEGEND_TIERS: readonly MapTier[] = ['critical', 'needs-vehicle', 'healthy', 'silent'];
 
-const STATION_MARKERS: Marker[] = [
-  { x: 41, y: 30, tone: 'empty', stationId: '102' },
-  { x: 47, y: 27, tone: 'empty', stationId: '244' },
-  { x: 36, y: 38, tone: 'ok', stationId: '442' },
-  { x: 52, y: 34, tone: 'warn', stationId: '182' },
-  { x: 57, y: 42, tone: 'warn', stationId: '517' },
-  { x: 29, y: 45, tone: 'empty', stationId: '311' },
-  { x: 44, y: 52, tone: 'warn', stationId: '408' },
-  { x: 62, y: 55, tone: 'mute', stationId: '7244' },
-  { x: 66, y: 60, tone: 'flood' },
-  { x: 33, y: 62, tone: 'ok' },
-  { x: 71, y: 35, tone: 'ok' },
-  { x: 25, y: 55, tone: 'warn' },
-];
-
-const VEHICLE_MARKERS = [
-  { x: 38, y: 24 },
-  { x: 40, y: 41 },
-  { x: 55, y: 62 },
-  { x: 63, y: 78 },
-  { x: 32, y: 82 },
-];
-
-/** Cluster badges sit roughly where each borough's mass is. */
-const ZONE_MARKERS = [
-  { x: 49, y: 22, count: ZONES[3]!.stations },
-  { x: 44, y: 47, count: ZONES[0]!.stations },
-  { x: 68, y: 50, count: ZONES[2]!.stations },
-  { x: 52, y: 74, count: ZONES[1]!.stations },
-];
+const StationMap = lazy(() => import('../ui/StationMap'));
 
 export function MapView() {
-  const [layer, setLayer] = useState<'bikes' | 'docks'>('bikes');
-  const [jump, setJump] = useState('');
-  const [needsVehicleOnly, setNeedsVehicleOnly] = useState(false);
-  /** The pin the popup is describing. Clicking a pin moves the popup to it. */
-  const [focusId, setFocusId] = useState('102');
-  const openStation = useConsole((s) => s.openStation);
-  const byId = useDispatch((s) => s.byId);
   const scored = useDispatch((s) => s.scored);
+  const lanes = useDispatch((s) => s.lanes);
+  const filters = useDispatch((s) => s.filters);
+  const setFilters = useDispatch((s) => s.setFilters);
+  const byId = useDispatch((s) => s.byId);
+
+  const openStation = useConsole((s) => s.openStation);
+  const openStationId = useConsole((s) => s.openStationId);
   const arrival = useArrival();
 
-  // Real geography needs both a token and a feed. Either missing falls back to
-  // the schematic rather than to an empty rectangle.
-  const live = Boolean(MAPBOX_TOKEN) && scored.length > 0;
-  const needsVehicle = scored.filter((s) => s.breakdown.needsVehicle).length;
-
-  /**
-   * Where the map should fly next.
-   *
-   * "Jump to station" was a text input bound to state nothing read — you could
-   * type into it and the map sat still. With sixteen fixed pins there was
-   * nothing to jump to; with 2,509 real ones it is the only way to find a named
-   * station without hunting.
-   */
+  const [jump, setJump] = useState('');
   const [flyId, setFlyId] = useState<string | null>(null);
+  const [enabled, setEnabled] = useState<Set<MapTier>>(
+    () => new Set<MapTier>(LEGEND_TIERS),
+  );
+  const [legendOpen, setLegendOpen] = useState(true);
+
+  const live = Boolean(MAPBOX_TOKEN) && scored.length > 0;
+  const borough = filters.borough;
+
+  const inBorough = useMemo(
+    () =>
+      borough === 'all' ? scored : scored.filter((s) => s.station.borough === borough),
+    [scored, borough],
+  );
+
+  const counts = useMemo(() => tierCounts(inBorough), [inBorough]);
+
+  const stationsFC = useMemo(
+    () => stationFeatures(inBorough.filter((s) => enabled.has(tierOf(s.breakdown)))),
+    [inBorough, enabled],
+  );
+
+  const pairs = useMemo(() => {
+    const lane =
+      borough === 'all'
+        ? lanes.vehicle
+        : lanes.vehicle.filter((s) => s.station.borough === borough);
+    return findSwapPairs(lane).slice(0, 40);
+  }, [lanes.vehicle, borough]);
+  const swapsFC = useMemo(() => swapFeatures(pairs), [pairs]);
+
+  // Two boxes, not one. The camera and the grey-out follow whatever is in scope;
+  // how far you may pan and zoom out follows the whole network, so narrowing to
+  // a borough never locks you inside it.
+  const serviceBounds = useMemo(() => boundsOf(inBorough), [inBorough]);
+  const limitBounds = useMemo(() => boundsOf(scored), [scored]);
+  const vehicles = useMemo(() => buildVehicles(scored), [scored]);
+
+  const needVehicle = counts.critical + counts['needs-vehicle'];
+
+  /*
+   * Derived, not the `VEHICLES_ACTIVE` constant.
+   *
+   * That constant is a frozen copy of a number the fixture already knows — the
+   * exact shape this repo keeps deleting elsewhere — and it answers the wrong
+   * question anyway. "Active" counts the vehicles you cannot have; a dispatcher
+   * looking at a map full of red is asking how many they can send.
+   */
+  const vehiclesFree = VEHICLES.filter((v) => v.state === 'idle').length;
+
   const hits = useMemo(() => {
     const q = jump.trim().toLowerCase();
     if (q.length < 2) return [];
@@ -126,45 +137,35 @@ export function MapView() {
     setJump('');
   };
 
-  // A link from Unverified names a live station id, which is not one of the
-  // schematic pins — resolve it from the feed so the card can still describe it.
+  const toggleTier = (t: MapTier) =>
+    setEnabled((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+
   const arrived = arrival.focus ? byId.get(arrival.focus) : undefined;
-  const station = arrived ? toStationRow(arrived) : (stationById(focusId) ?? STATIONS[0]!);
+  const focusId = flyId ?? arrival.focus ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
         title="Network Status Map"
         subtitle={
-          <span className="num inline-flex items-center gap-1.5 text-[10px] tracking-[0.08em] uppercase">
-            <span
-              aria-hidden="true"
-              className="pulse-dot h-[5px] w-[5px] rounded-full"
-              style={{ backgroundColor: TONE.ok.fg }}
-            />
-            {(live ? scored.length : TOTAL_STATIONS).toLocaleString('en-US')} stations ·{' '}
-            {live && <>{needsVehicle.toLocaleString('en-US')} need a vehicle · </>}
-            {VEHICLES_ACTIVE}/{VEHICLES_TOTAL} vehicles active
-          </span>
+          live
+            ? 'Where the trouble is, geographically. Colour is urgency, size is how many bikes would fix it.'
+            : 'Reading the live feed…'
         }
         actions={
           <>
-            {live && (
-              <FilterChip
-                label="Needs a vehicle"
-                tone="warn"
-                count={needsVehicle}
-                active={needsVehicleOnly}
-                onClick={() => setNeedsVehicleOnly((v) => !v)}
-              />
-            )}
-            <Segmented
-              label="Map layer"
-              value={layer}
-              onChange={setLayer}
+            <Select
+              label="Filter by borough"
+              value={borough}
+              onChange={(v) => setFilters({ borough: v as Borough | 'all' })}
               options={[
-                { value: 'bikes', label: 'Urgency' },
-                { value: 'docks', label: 'Fill' },
+                { value: 'all', label: 'All Boroughs' },
+                ...BOROUGHS.filter((b) => b !== 'Unknown').map((b) => ({ value: b, label: b })),
               ]}
             />
             <span className="relative">
@@ -207,7 +208,7 @@ export function MapView() {
             detail={
               arrived
                 ? `showing ${arrived.station.name}`
-                : 'that station has no pin on this schematic map — the card below describes it instead'
+                : 'that station is not in the current feed — it may have dropped off since the link was made'
             }
             onDismiss={arrival.dismiss}
           />
@@ -225,185 +226,370 @@ export function MapView() {
               }
             >
               <StationMap
-                scored={scored}
-                layer={layer === 'bikes' ? 'score' : 'fill'}
-                needsVehicleOnly={needsVehicleOnly}
-                focusId={flyId ?? arrival.focus ?? null}
+                stations={stationsFC}
+                swaps={swapsFC}
+                vehicles={vehicles}
+                serviceBounds={serviceBounds}
+                limitBounds={limitBounds}
+                fitKey={borough}
+                selectedId={openStationId}
+                focusId={focusId}
                 onSelect={openStation}
               />
             </Suspense>
-            <MapLegend layer={layer} showVehicle={false} />
+            <MapMetrics
+              needVehicle={needVehicle}
+              critical={counts.critical}
+              swaps={pairs.length}
+              free={vehiclesFree}
+              fleet={VEHICLES.length}
+              stations={inBorough.length}
+              borough={borough}
+            />
+            <LegendFilter
+              counts={counts}
+              enabled={enabled}
+              onToggle={toggleTier}
+              open={legendOpen}
+              onOpenChange={() => setLegendOpen((v) => !v)}
+              swaps={pairs.length}
+            />
           </>
         ) : (
-          <Schematic
-            layer={layer}
-            focusId={focusId}
-            setFocusId={setFocusId}
-            openStation={openStation}
-            station={station}
-          />
+          <Schematic openStation={openStation} station={stationById(focusId ?? '') ?? STATIONS[0]!} />
         )}
       </div>
     </div>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+
+/** Padded bounding box of a set of stations, or null when none have coordinates. */
+function boundsOf(list: ScoredStation[]): [[number, number], [number, number]] | null {
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const s of list) {
+    const { lat, lon } = s.station;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (lon < minLon) minLon = lon;
+    if (lon > maxLon) maxLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+  if (!Number.isFinite(minLon)) return null;
+  const padLon = (maxLon - minLon) * 0.04 || 0.01;
+  const padLat = (maxLat - minLat) * 0.04 || 0.01;
+  return [
+    [minLon - padLon, minLat - padLat],
+    [maxLon + padLon, maxLat + padLat],
+  ];
+}
+
 /**
- * The drawn plan, kept as the no-token fallback.
+ * The whole fleet, translated for the map layer.
  *
- * Not deleted along with the swap to real geography: a clone of this repo with
- * no Mapbox token would otherwise render an empty grey rectangle, and a blank
- * screen is a worse answer than a schematic one that says what it is.
+ * All eight, idle ones included — the header has always said "5/8 vehicles
+ * active" while the map drew three, and an idle van parked at a depot is
+ * precisely what a dispatcher with a station to serve is looking for. State
+ * colour is the same `VEHICLE_STATE_TONE` the Rebalancing rail and Fleet
+ * Operations use, so a green dot means the same thing on all three screens.
  */
-function Schematic({
-  layer,
-  focusId,
-  setFocusId,
-  openStation,
-  station,
+function buildVehicles(scored: ScoredStation[]): MapVehicle[] {
+  return VEHICLES.map((v) => {
+    const dest = v.active ? resolveStation(v.active, scored) : null;
+    return {
+      id: v.id,
+      lat: v.lat,
+      lon: v.lon,
+      kindLabel: VEHICLE_KIND_LABEL[v.kind],
+      wide: v.kind === 'box-truck',
+      stateLabel: VEHICLE_STATE_LABEL[v.state],
+      accent: TONE[VEHICLE_STATE_TONE[v.state]].fg,
+      load: v.load,
+      capacity: v.capacity,
+      depot: v.depot,
+      heading: v.where,
+      when: v.when ?? null,
+      freeIn: formatFreeIn(v.freeInMin),
+      dest: dest ? ([dest.station.lon, dest.station.lat] as [number, number]) : null,
+      href: focusHref('/fleet/vehicles', v.id, 'Map View', '/dispatch/map'),
+    };
+  });
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Best-effort match of a vehicle's destination name to a live station. */
+function resolveStation(name: string, scored: ScoredStation[]): ScoredStation | null {
+  const target = norm(name);
+  const exact = scored.find((s) => norm(s.station.name) === target);
+  if (exact) return exact;
+  const parts = name.split('&').map(norm).filter(Boolean);
+  if (!parts.length) return null;
+  return scored.find((s) => {
+    const n = norm(s.station.name);
+    return parts.every((p) => n.includes(p));
+  }) ?? null;
+}
+
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The four numbers that decide whether this screen is worth looking at, and one
+ * that is only context.
+ *
+ * These were a single run of mono capitals separated by dots — "2,507 STATIONS ·
+ * 677 NEED A VEHICLE · 27 SWAPS IN REACH · 5/8 VEHICLES ACTIVE" — in which the
+ * station count, which never changes and decides nothing, was set in exactly the
+ * same weight and colour as the workload. Four equally loud numbers are four
+ * numbers nobody reads.
+ *
+ * So: the figures carry the tone they carry everywhere else on the board, the
+ * labels are plain words rather than shouted ones, and the total drops to the
+ * end in grey where context belongs. `of them critical` is doing real work — the
+ * critical count is a *subset* of the vehicle count, and two adjacent red and
+ * amber numbers would otherwise read as two separate piles that ought to sum.
+ *
+ * It floats on the map rather than sitting in the masthead. Given its own row in
+ * the header it pushed the canvas down by a third of a legend's worth of height
+ * to say five things, and a map screen cannot spend that; over the top-left
+ * corner it costs nothing, because at every zoom this map allows, the top-left
+ * corner is water or the greyed-out ground beyond the service area.
+ */
+function MapMetrics({
+  needVehicle,
+  critical,
+  swaps,
+  free,
+  fleet,
+  stations,
+  borough,
 }: {
-  layer: 'bikes' | 'docks';
-  focusId: string;
-  setFocusId: (id: string) => void;
-  openStation: (id: string) => void;
-  station: StationRow;
+  needVehicle: number;
+  critical: number;
+  swaps: number;
+  free: number;
+  fleet: number;
+  stations: number;
+  borough: string;
+}) {
+  const n = (v: number) => v.toLocaleString('en-US');
+
+  return (
+    <div className="absolute top-3 left-4 z-10 flex items-start gap-3.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/95 px-3 py-2 shadow-[0_2px_10px_rgb(43_38_33/8%)] backdrop-blur-sm">
+      <Metric value={n(needVehicle)} label="need a vehicle" tone="warn" />
+      <Metric value={n(critical)} label="of them critical" tone="empty" />
+      <Metric value={n(swaps)} label={swaps === 1 ? 'swap in reach' : 'swaps in reach'} tone="ink" />
+      <Metric
+        value={n(free)}
+        unit={`of ${fleet}`}
+        label="vehicles free"
+        tone={free > 0 ? 'ok' : 'mute'}
+      />
+
+      <span aria-hidden="true" className="mt-0.5 h-[24px] w-px bg-[var(--color-line)]" />
+
+      <Metric
+        value={n(stations)}
+        label={borough === 'all' ? 'stations' : borough}
+        tone="mute"
+        quiet
+      />
+    </div>
+  );
+}
+
+function Metric({
+  value,
+  unit,
+  label,
+  tone,
+  quiet = false,
+}: {
+  value: string;
+  unit?: string;
+  label: string;
+  tone: Tone;
+  quiet?: boolean;
 }) {
   return (
-    <>
-      <Basemap />
+    <span className="flex flex-col">
+      <span
+        className={cn('num leading-none font-semibold', quiet ? 'text-[12px]' : 'text-[16px]')}
+        style={{ color: quiet ? 'var(--color-ink-3)' : TONE[tone].fg }}
+      >
+        {value}
+        {unit && (
+          <span className="ml-0.5 text-[9px] font-medium text-[var(--color-ink-3)]">{unit}</span>
+        )}
+      </span>
+      <span className="mt-1 text-[9px] leading-none whitespace-nowrap text-[var(--color-ink-3)]">
+        {label}
+      </span>
+    </span>
+  );
+}
 
-      <div className="absolute top-3 left-1/2 z-10 -translate-x-1/2">
-        <Banner tone="warn" icon="alert-triangle">
-          No Mapbox token, so this is the schematic map — sixteen hand-placed pins, not the{' '}
-          {TOTAL_STATIONS} real ones. Set <code className="num">VITE_MAPBOX_TOKEN</code> in{' '}
-          <code className="num">.env</code> for live geography.
-        </Banner>
-      </div>
-
-      {STATION_MARKERS.map((m, i) => {
-          const named = m.stationId ? stationById(m.stationId) : null;
-
-          if (!named) {
-            return (
-              <span
-                key={`s${i}`}
-                aria-hidden="true"
-                className="absolute h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80"
-                style={{ left: `${m.x}%`, top: `${m.y}%`, backgroundColor: TONE[m.tone].fg }}
-              />
-            );
-          }
-
-          const focused = focusId === named.id;
-          return (
-            <button
-              key={`s${i}`}
-              type="button"
-              onClick={() => setFocusId(named.id)}
-              onDoubleClick={() => openStation(named.id)}
-              aria-label={`${named.name}. Show details.`}
-              className={cn(
-                'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-transform hover:scale-125',
-                focused ? 'h-[13px] w-[13px] border-2 border-white' : 'h-[9px] w-[9px] border-white/80',
-              )}
-              style={{
-                left: `${m.x}%`,
-                top: `${m.y}%`,
-                backgroundColor: TONE[m.tone].fg,
-                boxShadow: focused ? `0 0 0 3px ${TONE[m.tone].fg}44` : undefined,
-              }}
-            />
-          );
-        })}
-
-        {ZONE_MARKERS.map((m, i) => (
-          <span
-            key={`z${i}`}
-            className="num absolute flex h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-ink)] bg-[var(--color-surface)] text-[10px] font-semibold text-[var(--color-ink)]"
-            style={{ left: `${m.x}%`, top: `${m.y}%` }}
-          >
-            {m.count}
-          </span>
-        ))}
-
-        {VEHICLE_MARKERS.map((m, i) => (
-          <span
-            key={`t${i}`}
-            aria-hidden="true"
-            className="absolute flex h-[22px] w-[22px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-[var(--color-ink)] bg-[var(--color-surface)] text-[var(--color-ink)] shadow-sm"
-            style={{ left: `${m.x}%`, top: `${m.y}%` }}
-          >
-            <Icon name="vehicle" size={12} />
-          </span>
-        ))}
-
-      <StationPopup station={station} onOpen={() => openStation(station.id)} />
-      <MapLegend layer={layer} />
-    </>
+function TierSwatch({ tier }: { tier: MapTier }) {
+  if (tier === 'silent') {
+    return (
+      <span
+        aria-hidden="true"
+        className="h-[9px] w-[9px] shrink-0 rounded-full border-[1.5px]"
+        style={{ borderColor: TONE.mute.fg }}
+      />
+    );
+  }
+  const tone: Tone = tier === 'critical' ? 'empty' : tier === 'needs-vehicle' ? 'warn' : 'ok';
+  return (
+    <span
+      aria-hidden="true"
+      className="shrink-0 rounded-full"
+      style={{
+        width: tier === 'healthy' ? 6 : 9,
+        height: tier === 'healthy' ? 6 : 9,
+        backgroundColor: TONE[tone].fg,
+        opacity: tier === 'healthy' ? 0.5 : 1,
+      }}
+    />
   );
 }
 
 /**
- * The key.
+ * The key, and the filter.
  *
- * The map is the only screen where color is the entire message and there is no
- * text beside it — without this, four colored dots mean nothing to anyone who
- * has not already memorised the Score Guide on the queue.
+ * Each row is a toggle: press it and that band leaves the map, so a dispatcher
+ * working criticals can drop the 1,800 healthy dots to nothing. Counts are live
+ * and scoped to the borough. Collapsible because at its full height it sat over
+ * Jersey City.
  */
-function MapLegend({ layer, showVehicle = true }: { layer: 'bikes' | 'docks'; showVehicle?: boolean }) {
-  // The two layers colour the same dots by different questions, so one fixed
-  // key would be wrong half the time. Urgency reuses the Score Guide's bands
-  // exactly; fill reuses the warm/cool split — warm means nobody can rent,
-  // cool means nobody can return.
-  const items: { label: string; tone: Tone }[] =
-    layer === 'bikes'
-      ? [
-          { label: `Critical · ${CRITICAL_THRESHOLD}+`, tone: 'empty' },
-          { label: `Needs a vehicle · ${NEEDS_VEHICLE_THRESHOLD}–${CRITICAL_THRESHOLD - 1}`, tone: 'warn' },
-          { label: `Drifting · under ${NEEDS_VEHICLE_THRESHOLD}`, tone: 'ok' },
-          // Called "Unverified" for about an hour, which was wrong by two
-          // orders of magnitude: exactly one station in the network is in the
-          // unverified lane, while ~107 grey dots are racks the feed lists but
-          // that are not installed in the ground — most of them the east
-          // Brooklyn expansion. Naming them after the rare case sent a reader
-          // hunting for a hundred silent stations that do not exist.
-          { label: 'Not installed or silent', tone: 'mute' },
-        ]
-      : [
-          { label: 'Out of bikes · under 15%', tone: 'empty' },
-          { label: 'Balanced', tone: 'ok' },
-          { label: 'Out of docks · over 85%', tone: 'flood' },
-          { label: 'No usable slots reported', tone: 'mute' },
-        ];
-
+function LegendFilter({
+  counts,
+  enabled,
+  onToggle,
+  open,
+  onOpenChange,
+  swaps,
+}: {
+  counts: Record<MapTier, number>;
+  enabled: Set<MapTier>;
+  onToggle: (t: MapTier) => void;
+  open: boolean;
+  onOpenChange: () => void;
+  swaps: number;
+}) {
   return (
-    <div className="absolute bottom-4 left-4 z-10 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/95 px-3 py-2.5 shadow-[0_2px_10px_rgb(43_38_33/8%)]">
-      <p className="eyebrow text-[10px]">{layer === 'bikes' ? 'Urgency' : 'Fill'}</p>
-      <ul className="mt-2 flex flex-col gap-1.5">
-        {items.map((i) => (
-          <li key={i.label} className="flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
-            <span
-              aria-hidden="true"
-              className="h-[7px] w-[7px] shrink-0 rounded-full border border-white/80"
-              style={{ backgroundColor: TONE[i.tone].fg }}
-            />
-            {i.label}
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 border-t border-[var(--color-line-soft)] pt-2 text-[10px] leading-snug text-[var(--color-ink-3)]">
-        Dot size is station capacity. Click one to open its receipt.
-      </p>
-      {showVehicle && (
-        <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
-          <span
-            aria-hidden="true"
-            className="flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded border border-[var(--color-ink)] bg-[var(--color-surface)]"
-          >
-            <Icon name="vehicle" size={9} />
-          </span>
-          Vehicle
-        </div>
+    <div className="absolute bottom-4 left-4 z-10 w-[224px] overflow-hidden rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)]/95 shadow-[0_2px_10px_rgb(43_38_33/8%)] backdrop-blur-sm">
+      <button
+        type="button"
+        onClick={onOpenChange}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-[var(--color-sunken)]"
+      >
+        <span className="eyebrow text-[10px]">Urgency</span>
+        <Icon
+          name="chevron-down"
+          size={14}
+          className={cn(
+            'text-[var(--color-ink-3)] transition-transform',
+            !open && '-rotate-90',
+          )}
+        />
+      </button>
+
+      {open && (
+        <>
+          <ul className="border-t border-[var(--color-line-soft)] px-1.5 py-1.5">
+            {LEGEND_TIERS.map((tier) => {
+              const on = enabled.has(tier);
+              return (
+                <li key={tier}>
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => onToggle(tier)}
+                    className={cn(
+                      'flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[10px] transition-colors hover:bg-[var(--color-sunken)]',
+                      !on && 'opacity-40',
+                    )}
+                  >
+                    <TierSwatch tier={tier} />
+                    <span
+                      className={cn(
+                        'flex-1 text-[var(--color-ink-2)]',
+                        !on && 'line-through',
+                      )}
+                    >
+                      {TIER_LABEL[tier]}
+                    </span>
+                    <span className="num text-[10px] font-semibold text-[var(--color-ink)]">
+                      {counts[tier].toLocaleString('en-US')}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="border-t border-[var(--color-line-soft)] px-3 py-2">
+            <p className="eyebrow mb-1.5 text-[9px]">Fleet</p>
+            <div className="flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
+              <span className="flex w-[24px] shrink-0 justify-center">
+                <span
+                  aria-hidden="true"
+                  className="h-[9px] w-[10px] rounded-[2px] border-[1.5px]"
+                  style={{ borderColor: TONE.mute.fg }}
+                />
+              </span>
+              Van · holds {VEHICLE_KIND_CAPACITY.van}
+            </div>
+            <div className="mt-1.5 flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
+              <span className="flex w-[24px] shrink-0 justify-center">
+                <span
+                  aria-hidden="true"
+                  className="h-[9px] w-[18px] rounded-[2px] border-[1.5px] border-l-[4px]"
+                  style={{ borderColor: TONE.mute.fg }}
+                />
+              </span>
+              Box truck · holds {VEHICLE_KIND_CAPACITY['box-truck']}
+            </div>
+            <p className="mt-1.5 pl-[32px] text-[9px] leading-snug text-[var(--color-ink-3)]">
+              Colour is its state, fill is how loaded it is. Click one for the rest.
+            </p>
+          </div>
+
+          <div className="border-t border-[var(--color-line-soft)] px-3 py-2">
+            <div className="flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
+              <span
+                aria-hidden="true"
+                className="h-0 w-[18px] shrink-0 border-t-[1.5px] border-dashed"
+                style={{ borderColor: TONE.ok.fg }}
+              />
+              Vehicle route
+            </div>
+            <div className="mt-1.5 flex items-center gap-2 text-[10px] text-[var(--color-ink-2)]">
+              <span
+                aria-hidden="true"
+                className="h-0 w-[18px] shrink-0 border-t-[1.5px] border-dotted border-[var(--color-ink-2)]"
+              />
+              Swap pair{swaps > 0 && <span className="num"> · {swaps} now</span>}
+            </div>
+            {/* The count is a network total and stays true at every zoom; the
+                lines are not drawn until the two stations they join are on the
+                map as themselves. Saying so beats a reader hunting for 24
+                connectors that are inside the clusters. */}
+            <p className="mt-1 pl-[26px] text-[9px] leading-snug text-[var(--color-ink-3)]">
+              Drawn once you zoom past the clusters.
+            </p>
+          </div>
+
+          <p className="border-t border-[var(--color-line-soft)] px-3 py-2 text-[10px] leading-snug text-[var(--color-ink-3)]">
+            Dot size is bikes to move, not station size. Click a station for its full score.
+          </p>
+        </>
       )}
     </div>
   );
@@ -411,13 +597,107 @@ function MapLegend({ layer, showVehicle = true }: { layer: 'bikes' | 'docks'; sh
 
 /* -------------------------------------------------------------------------- */
 
-function StationPopup({
+/**
+ * The no-token fallback: a drawn plan with a handful of hand-placed pins.
+ *
+ * Kept because a clone of this repo with no `VITE_MAPBOX_TOKEN` would otherwise
+ * render an empty grey rectangle, and a schematic that says what it is beats a
+ * blank screen. Everything real happens in the live branch above.
+ */
+const STATION_MARKERS: { x: number; y: number; tone: Tone; stationId?: string }[] = [
+  { x: 41, y: 30, tone: 'empty', stationId: '102' },
+  { x: 47, y: 27, tone: 'empty', stationId: '244' },
+  { x: 36, y: 38, tone: 'ok', stationId: '442' },
+  { x: 52, y: 34, tone: 'warn', stationId: '182' },
+  { x: 57, y: 42, tone: 'warn', stationId: '517' },
+  { x: 29, y: 45, tone: 'empty', stationId: '311' },
+  { x: 44, y: 52, tone: 'warn', stationId: '408' },
+  { x: 62, y: 55, tone: 'mute', stationId: '7244' },
+  { x: 66, y: 60, tone: 'flood' },
+  { x: 33, y: 62, tone: 'ok' },
+  { x: 71, y: 35, tone: 'ok' },
+  { x: 25, y: 55, tone: 'warn' },
+];
+
+const ZONE_MARKERS = [
+  { x: 49, y: 22, count: ZONES[3]!.stations },
+  { x: 44, y: 47, count: ZONES[0]!.stations },
+  { x: 68, y: 50, count: ZONES[2]!.stations },
+  { x: 52, y: 74, count: ZONES[1]!.stations },
+];
+
+function Schematic({
+  openStation,
   station,
-  onOpen,
 }: {
-  station: (typeof STATIONS)[number];
-  onOpen: () => void;
+  openStation: (id: string) => void;
+  station: StationRow;
 }) {
+  const [focusId, setFocusId] = useState('102');
+  const shown = stationById(focusId) ?? station;
+
+  return (
+    <>
+      <Basemap />
+
+      <div className="absolute top-3 left-1/2 z-10 -translate-x-1/2">
+        <Banner tone="warn" icon="alert-triangle">
+          No Mapbox token, so this is the schematic map — a dozen hand-placed pins, not the{' '}
+          {TOTAL_STATIONS} real ones. Set <code className="num">VITE_MAPBOX_TOKEN</code> in{' '}
+          <code className="num">.env</code> for live geography.
+        </Banner>
+      </div>
+
+      {STATION_MARKERS.map((m, i) => {
+        const named = m.stationId ? stationById(m.stationId) : null;
+        if (!named) {
+          return (
+            <span
+              key={`s${i}`}
+              aria-hidden="true"
+              className="absolute h-[7px] w-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80"
+              style={{ left: `${m.x}%`, top: `${m.y}%`, backgroundColor: TONE[m.tone].fg }}
+            />
+          );
+        }
+        const focused = focusId === named.id;
+        return (
+          <button
+            key={`s${i}`}
+            type="button"
+            onClick={() => setFocusId(named.id)}
+            onDoubleClick={() => openStation(named.id)}
+            aria-label={`${named.name}. Show details.`}
+            className={cn(
+              'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border transition-transform hover:scale-125',
+              focused ? 'h-[13px] w-[13px] border-2 border-white' : 'h-[9px] w-[9px] border-white/80',
+            )}
+            style={{
+              left: `${m.x}%`,
+              top: `${m.y}%`,
+              backgroundColor: TONE[m.tone].fg,
+              boxShadow: focused ? `0 0 0 3px ${TONE[m.tone].fg}44` : undefined,
+            }}
+          />
+        );
+      })}
+
+      {ZONE_MARKERS.map((m, i) => (
+        <span
+          key={`z${i}`}
+          className="num absolute flex h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-ink)] bg-[var(--color-surface)] text-[10px] font-semibold text-[var(--color-ink)]"
+          style={{ left: `${m.x}%`, top: `${m.y}%` }}
+        >
+          {m.count}
+        </span>
+      ))}
+
+      <StationPopup station={shown} onOpen={() => openStation(shown.id)} />
+    </>
+  );
+}
+
+function StationPopup({ station, onOpen }: { station: StationRow; onOpen: () => void }) {
   const pct = station.bikes !== null ? Math.round((station.bikes / station.docks) * 100) : null;
   const free = station.bikes !== null ? station.docks - station.bikes : null;
 
@@ -436,25 +716,10 @@ function StationPopup({
       <p className="mt-0.5 text-[10px] text-[var(--color-ink-3)]">
         {station.borough} · Station {station.stationNumber}
       </p>
-
-      <div className="mt-2.5 grid grid-cols-2 gap-2">
-        <MiniStat label="Bikes / Docks">
-          <span className="num text-[13px] font-semibold" style={{ color: TONE.empty.fg }}>
-            {station.bikes ?? '—'}
-          </span>
-          <span className="num text-[11px] text-[var(--color-ink-3)]"> / {station.docks}</span>
-        </MiniStat>
-        <MiniStat label="Inbound ETA">
-          <span className="num text-[13px] font-semibold text-[var(--color-ink)]">6</span>
-          <span className="num text-[10px] text-[var(--color-ink-3)]"> min</span>
-        </MiniStat>
-      </div>
-
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        <span className="text-[10px] text-[var(--color-ink-2)]">Borough Status</span>
+        <span className="text-[10px] text-[var(--color-ink-2)]">Status</span>
         <StatusPill label={station.status} />
       </div>
-
       <div className="mt-2">
         <Bar value={station.fill} tone={station.fillTone} height={5} />
       </div>
@@ -462,7 +727,6 @@ function StationPopup({
         <span>{pct === null ? 'unknown' : `${pct}% utilization`}</span>
         <span>{free === null ? '—' : `${free} slots free`}</span>
       </div>
-
       <Button
         variant="dark"
         icon="vehicle"
@@ -482,76 +746,32 @@ function StationPopup({
   );
 }
 
-function MiniStat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-md border border-[var(--color-line)] bg-[var(--color-sunken)] px-2 py-1.5">
-      <p className="eyebrow text-[10px]">{label}</p>
-      <p className="mt-1 leading-none">{children}</p>
-    </div>
-  );
-}
-
-/**
- * The drawn ground.
- *
- * Built from CSS gradients rather than an SVG viewBox: the map pane is whatever
- * shape the window makes it, and a fixed viewBox either distorts the grid or
- * scales the labels to billboard size. Repeating gradients stay the same
- * physical width at any aspect ratio.
- */
 function Basemap() {
   return (
     <div aria-hidden="true" className="absolute inset-0 bg-[#f2efe8]">
-      {/* Rivers */}
-      <div
-        className="absolute inset-y-0 -left-24 w-52 bg-[#e5eaea]"
-        style={{ transform: 'skewX(-6deg)' }}
-      />
-      <div
-        className="absolute inset-y-0 -right-28 w-64 bg-[#e5eaea]"
-        style={{ transform: 'skewX(-6deg)' }}
-      />
-
-      {/* Park */}
+      <div className="absolute inset-y-0 -left-24 w-52 bg-[#e5eaea]" style={{ transform: 'skewX(-6deg)' }} />
+      <div className="absolute inset-y-0 -right-28 w-64 bg-[#e5eaea]" style={{ transform: 'skewX(-6deg)' }} />
       <div
         className="absolute top-[6%] left-[40%] h-[46%] w-[9%] rounded-sm bg-[#e2e8db]"
         style={{ transform: 'rotate(6deg)' }}
       />
-
-      {/* Cross streets */}
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage:
-            'repeating-linear-gradient(177deg, transparent 0 26px, #fbf9f5 26px 30px)',
+          backgroundImage: 'repeating-linear-gradient(177deg, transparent 0 26px, #fbf9f5 26px 30px)',
         }}
       />
-
-      {/* Avenues */}
       <div
         className="absolute inset-0"
         style={{
-          backgroundImage:
-            'repeating-linear-gradient(84deg, transparent 0 62px, #fbf9f5 62px 68px)',
+          backgroundImage: 'repeating-linear-gradient(84deg, transparent 0 62px, #fbf9f5 62px 68px)',
         }}
       />
-
-      {/* Two arterials and one diagonal */}
-      <div className="absolute top-[46%] -left-10 h-[7px] w-[130%] bg-[#f6f3ec]" style={{ transform: 'rotate(-1.5deg)' }} />
-      <div className="absolute top-[76%] -left-10 h-[7px] w-[130%] bg-[#f6f3ec]" style={{ transform: 'rotate(-1.5deg)' }} />
-      <div
-        className="absolute -top-10 left-[46%] h-[160%] w-[9px] bg-[#f7f4ee]"
-        style={{ transform: 'rotate(14deg)' }}
-      />
-
       <span className="absolute top-[16%] right-[9%] text-[22px] font-semibold tracking-[0.14em] text-[#cdc7bb]">
         QUEENS
       </span>
       <span className="absolute bottom-[10%] left-[16%] text-[22px] font-semibold tracking-[0.14em] text-[#cdc7bb]">
         BROOKLYN
-      </span>
-      <span className="absolute top-[26%] left-[40.5%] text-[10px] font-semibold tracking-[0.1em] text-[#b0b8a3]">
-        PARK
       </span>
     </div>
   );

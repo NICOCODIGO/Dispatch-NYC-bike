@@ -137,6 +137,7 @@ export function Finding({
           className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1.5 border-t px-3.5 py-1.5"
           style={{ borderColor: t.line }}
         >
+          {actions && <div className="flex items-center gap-2">{actions}</div>}
           <dl className="flex flex-wrap items-center gap-x-5 gap-y-1">
             {(stats ?? []).map((s) => (
               <div key={s.label} className="flex items-baseline gap-1.5">
@@ -150,7 +151,6 @@ export function Finding({
               </div>
             ))}
           </dl>
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
     </section>
