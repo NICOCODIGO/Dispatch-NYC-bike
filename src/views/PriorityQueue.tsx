@@ -23,12 +23,14 @@ import { OutcomeChip } from './DispatchHistory';
 import { latestRunFor, outcomeOf, type DispatchRun } from '../data/dispatchRun';
 import { COLUMN_HELP } from '../content/columns';
 import { SituationFinding } from '../content/situation';
+import { DispatchComposer } from './DispatchComposer';
 import { matchesOutsideQueue, networkDocks } from '../data/insights';
 import { assessSituation } from '../model/situation';
 import { backlog } from '../model/workOrder';
 import { hardwareLoad, hardwareTotals } from '../data/hardware';
 import { DISPOSITION_LABEL, useConsole, type Disposition } from '../state/useConsole';
 import { toStationRow } from '../data/adapt';
+import { verdictFor, wantsVehicle } from '../data/verdict';
 import type { StationRow } from '../data/stationRow';
 import { BOROUGHS, type Borough } from '../data/boroughs';
 import type { StationCategory } from '../model/score';
@@ -193,6 +195,10 @@ export function PriorityQueue() {
   const dispatched = useConsole((s) => s.dispatched);
   const workOrders = useConsole((s) => s.workOrders);
   const [showSnoozed, setShowSnoozed] = useState(false);
+  /* The composer, opened straight from a row. It mounts here as well as in the
+     drawer, but both hand the same `row` to the same component — one path with
+     two doors, not two paths to keep in step. */
+  const [composeRow, setComposeRow] = useState<StationRow | null>(null);
 
   const history = useSessionHistory();
   const { tracks } = history;
@@ -616,6 +622,7 @@ export function PriorityQueue() {
                         focused={arrival.focus === row.id}
                         run={latestRunFor(runs, row.id) ?? undefined}
                         onOpen={() => openStation(row.id)}
+                        onDispatch={() => setComposeRow(row)}
                       />
                     ))}
                   </tbody>
@@ -698,6 +705,8 @@ export function PriorityQueue() {
         </div>
       </PageBody>
 
+      {composeRow && <DispatchComposer row={composeRow} onClose={() => setComposeRow(null)} />}
+
       {/* The composer used to mount here too, for the strip's dispatch button.
           With that gone, the only route to it is a station's own drawer — which
           is where the readiness checks live, so there is now exactly one way to
@@ -719,12 +728,15 @@ function QueueRow({
   focused = false,
   run,
   onOpen,
+  onDispatch,
 }: {
   row: StationRow;
   selected: boolean;
   focused?: boolean;
   run?: DispatchRun;
   onOpen: () => void;
+  /** Opens the composer for this row, without going through the drawer. */
+  onDispatch: () => void;
 }) {
   return (
     <tr
@@ -849,7 +861,7 @@ function QueueRow({
       </Td>
 
       <Td>
-        <DispositionCell row={row} />
+        <DispositionCell row={row} onDispatch={onDispatch} />
         {run && (
           <span className="mt-1 block">
             <OutcomeChip run={run} />
@@ -971,10 +983,52 @@ function OffQueueHits({
  * a form control behind a pointer event is how a table stops being reachable by
  * keyboard, and this is the only cell here anyone can actually change.
  */
-function DispositionCell({ row }: { row: StationRow }) {
+/**
+ * What to do about this row, and what you already decided.
+ *
+ * These were two things and this column only ever showed the second. A select
+ * whose options include the word "Dispatched" sat at the end of every row and
+ * dispatched nothing — it recorded that you had. A dispatcher read the board,
+ * reached the right-hand edge, found a menu naming the action, chose it, and
+ * no vehicle moved. Reported as "there's no assign" by somebody looking
+ * straight at it, which is the clearest possible evidence that a log in an
+ * action's position is read as an action.
+ *
+ * So the cell leads with the action while there is one to take, and becomes the
+ * log once taken. One column answers "what do I do" and then "what did I
+ * decide", in that order, which is the order they happen in.
+ *
+ * The button is gated on the verdict, not on the score: `wantsVehicle` is the
+ * same test the drawer's footer and the Move column use, so the three cannot
+ * offer different answers for one station. Below the line there is no button at
+ * all — an enabled control is a recommendation, and recommending a run to a
+ * station that is still serving riders is what the whole threshold exists to
+ * prevent.
+ */
+function DispositionCell({ row, onDispatch }: { row: StationRow; onDispatch: () => void }) {
   const dispositions = useConsole((s) => s.dispositions);
   const setDisposition = useConsole((s) => s.setDisposition);
   const current = dispositions[row.id];
+
+  const verdict = row.breakdown ? verdictFor(row.breakdown, row.score ?? 0) : null;
+  const sendable = verdict !== null && wantsVehicle(verdict);
+
+  if (!current && sendable) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDispatch();
+        }}
+        title={`Send a vehicle to ${row.name}`}
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-ink)] bg-[var(--color-ink)] px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-white transition-colors hover:bg-[#3a332b]"
+      >
+        <Icon name="vehicle" size={12} />
+        Dispatch
+      </button>
+    );
+  }
 
   return (
     <span className="relative block">
@@ -1075,8 +1129,9 @@ function DockCount({ row }: { row: StationRow }) {
  */
 function MoveCell({ row }: { row: StationRow }) {
   const a = row.action;
+  const verdict = row.breakdown ? verdictFor(row.breakdown, row.score ?? 0) : null;
 
-  if (a?.kind === 'mechanic') {
+  if (verdict === 'mechanic' || a?.kind === 'mechanic') {
     return (
       <span className="text-[10px]" style={{ color: TONE.empty.fg }}>
         needs a mechanic
@@ -1084,8 +1139,30 @@ function MoveCell({ row }: { row: StationRow }) {
     );
   }
 
+  /*
+   * No instruction below the dispatch line.
+   *
+   * `vehicleAction` answers "which way, and how many" from the category alone,
+   * so a starving or flooded station returns a crisp "pick up 26" at a score of
+   * 48 — below the line, drifting, still serving riders on both sides. Printing
+   * that made the board read as a queue of 951 jobs when 679 are the actual
+   * work, and it is the same failure as a big red score over the words "no
+   * vehicle needed yet": the instruction contradicts the verdict.
+   *
+   * Read from `verdictFor` rather than by comparing the score here, because a
+   * component comparing against the threshold itself is how four surfaces once
+   * drifted apart.
+   */
+  if (verdict === 'unverified' || !verdict || !wantsVehicle(verdict)) {
+    return (
+      <span className="text-[10px] text-[var(--color-ink-3)]">
+        {verdict === 'unverified' ? 'not scored' : 'watch'}
+      </span>
+    );
+  }
+
   if (!a || a.kind === 'none' || a.bikes === 0) {
-    return <span className="text-[10px] text-[var(--color-ink-3)]">\u2014</span>;
+    return <span className="text-[10px] text-[var(--color-ink-3)]">&mdash;</span>;
   }
 
   const drop = a.kind === 'drop';

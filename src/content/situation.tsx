@@ -13,6 +13,19 @@ import { elapsed, since } from './clauses';
  * much of it, how long, and what to do — and the alarming ones lead red while
  * the routine one stays amber. The decision of *which* situation this is lives
  * in `src/model/situation.ts`; this file only phrases it.
+ *
+ * ## Two heights, one ranking
+ *
+ * `compact` marks the branches whose answer is on another screen: a blind spot
+ * goes to Not Reporting, hardware and unraised faults go to Maintenance. Those
+ * render as one line. The branches about *this* board — a critical station
+ * nobody has driven to, the worst station right now, an all-clear — keep the
+ * full treatment.
+ *
+ * The ranking is untouched. A network-wide hardware failure really is the worst
+ * thing on the network and should still win; what it should not do is open a
+ * rebalancing dispatcher's board with 153px telling them to go somewhere else.
+ * Severity decides the order, actionability decides the size.
  */
 
 type Stat = { label: string; value: ReactNode; tone?: Tone };
@@ -77,6 +90,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="radio-tower"
           tone="empty"
+          compact
           eyebrow="Blind spot"
           hero={`${Math.round(s.dockShare * 100)}%`}
           heroNote="of the network the board cannot see"
@@ -147,6 +161,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="wrench"
           tone="empty"
+          compact
           eyebrow="Hardware"
           hero={num(s.deadDocks)}
           heroNote={`dead docks · ${(s.dockShare * 100).toFixed(1)}% of the network`}
@@ -175,6 +190,7 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
         <Finding
           icon="wrench"
           tone="warn"
+          compact
           eyebrow="No repair"
           hero={num(s.count)}
           heroNote={`out-of-service station${s.count === 1 ? '' : 's'} with no repair scheduled`}

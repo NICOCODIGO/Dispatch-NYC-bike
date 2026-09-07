@@ -265,7 +265,7 @@ then the things you only watch.
 
 ## The whole network at once
 
-![All 2,509 stations on the map, coloured by urgency](docs/screenshots/map.jpg)
+![All 2,509 stations on the map, coloured by urgency](docs/screenshots/map.png)
 
 Every station Citi Bike runs, live. Red is critical, amber needs a vehicle, green
 is fine, grey isn't installed yet. The size of each dot is how many docks the

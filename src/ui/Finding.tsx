@@ -43,6 +43,7 @@ export function Finding({
   detail,
   stats,
   actions,
+  compact = false,
 }: {
   tone?: Tone;
   icon: IconName;
@@ -65,10 +66,71 @@ export function Finding({
   stats?: FindingStat[];
   /** Buttons or links for the footer row, opposite the stats. */
   actions?: ReactNode;
+  /**
+   * One line, for a finding you cannot act on from the screen you are reading.
+   *
+   * Severity ranking is right — a network-wide hardware failure genuinely is
+   * the worst thing happening, whoever is looking at it. What was wrong is that
+   * an alert *pointing somewhere else* was drawn at the same 153px weight as
+   * one describing the work in front of you, so a rebalancing dispatcher opened
+   * their board and the first thing on it said go to Hardware. Same ranking,
+   * same words, a fifth of the height: told, not redirected.
+   *
+   * Drops the hero, the detail and the stats — every one of those is depth on a
+   * subject this reader is not going to act on. The headline and the way there
+   * survive, because those are the whole message.
+   */
+  compact?: boolean;
 }) {
   const t = TONE[tone];
   const [open, setOpen] = useState(true);
   const detailId = useId();
+
+  if (compact) {
+    return (
+      <section
+        className="flex items-center gap-2.5 overflow-hidden rounded-lg border px-3 py-1.5"
+        style={{ backgroundColor: t.bg, borderColor: t.line, borderLeft: `4px solid ${t.fg}` }}
+      >
+        <span
+          aria-hidden="true"
+          className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded"
+          style={{ backgroundColor: t.fg, color: t.onFg }}
+        >
+          <Icon name={icon} size={11} />
+        </span>
+        {eyebrow && (
+          <span
+            className="shrink-0 text-[9px] leading-none font-bold tracking-[0.09em] uppercase"
+            style={{ color: t.fg }}
+          >
+            {eyebrow}
+          </span>
+        )}
+
+        {/* `hero` + `heroNote` where there is one, not the headline.
+            The pair is already a complete sentence — "676 dead docks - 0.9% of
+            the network" — and it is the figure the alert exists to report. The
+            headline is the elaboration, which is the part a one-liner spends.
+            Falling back to the headline keeps the mode usable for a finding
+            that has no single number. */}
+        <p className="min-w-0 flex-1 truncate text-[11.5px] text-[var(--color-ink)]">
+          {hero ? (
+            <>
+              <span className="num text-[13px] font-bold" style={{ color: t.fg }}>
+                {hero}
+              </span>{' '}
+              <span className="font-medium">{heroNote}</span>
+            </>
+          ) : (
+            <span className="font-medium">{headline}</span>
+          )}
+        </p>
+        {actions && <span className="shrink-0">{actions}</span>}
+      </section>
+    );
+  }
+
   const showDetail = Boolean(detail) && open;
   const hasFooter = (stats && stats.length > 0) || Boolean(actions);
 
