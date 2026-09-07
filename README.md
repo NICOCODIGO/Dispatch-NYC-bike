@@ -41,10 +41,11 @@ now stuck:
 The fix is boring. A van drives around, picking bikes up where they piled up and
 dropping them where they ran out. The industry calls this **rebalancing**.
 
-The hard part was never the driving. It's deciding **where to drive.** New York
-has **2,509 stations**, and on a normal afternoon somewhere between **700 and
-800 of them** need attention at once. No operator has 750 vehicles. Nobody has
-ever had 750 vehicles.
+The hard part was never the driving. It's deciding **where to drive.** When I
+checked, the network had **2,509 stations**, with somewhere between **700 and
+800 of them** needing attention. Those numbers move with the feed; they're the
+readings behind this write-up. No operator has 750 vehicles. Nobody has ever
+had 750 vehicles.
 
 So the real job is triage. Of the 750 things going wrong right now, which twenty
 matter most? That's the question this dashboard exists to answer.
@@ -83,7 +84,7 @@ For each station, the feed gives you roughly this:
 }
 ```
 
-That's the whole thing, repeated 2,509 times.
+That's the whole thing, repeated once for every station.
 
 **And that's the problem.** The feed is completely factual and completely silent
 on the only thing that matters. It will tell you a station has zero bikes. It
@@ -91,14 +92,15 @@ won't tell you whether that's an emergency or a normal Tuesday. Nothing in it
 says *urgent*, or *ignore this one*, or *this has been broken since six this
 morning*, or **go here first.**
 
-It's a spreadsheet with 2,509 rows and no sort order.
+It's a spreadsheet with thousands of rows and no sort order.
 
 ---
 
 ## What this app does with it
 
-Dispatch reads that feed every minute and turns each station into something a
-person can act on. The station in the JSON above comes out looking like this:
+Dispatch reads that feed every minute while the tab is visible and turns each
+station into something a person can act on. For a fresh reading, the station
+in the JSON above comes out looking like this:
 
 > **88** &nbsp; **Park Ave & E 41 St** · Manhattan · 109 docks, all of them empty
 > *Nobody can rent here.* → **drop 55 bikes**
@@ -110,18 +112,20 @@ Four things happen along the way.
 **1. Name the failure.** A station with no bikes and a station with no free docks
 are opposite emergencies, and they need opposite vehicles. One needs bikes
 delivered, the other needs bikes taken away. The feed treats both as ordinary
-numbers. The app splits them apart and colours them differently everywhere it
-shows them: warm means *nobody can rent*, cool means *nobody can return*.
+numbers. The board splits them apart and colours them differently: warm means
+*nobody can rent*, cool means *nobody can return*. The map uses colour for urgency.
 
 **2. Score how bad it is, 0 to 100.** Higher is worse. Three things move the
 number. **Size**, because a big station failing strands more riders than a small
 one. **Freshness**, because a reading from 40 minutes ago deserves less trust
-than one from 40 seconds ago. **Duration**, because a station that's been empty
-for hours is in worse shape than one that just tipped over.
+than one from 40 seconds ago. **Duration**, because a station the app has watched
+fail for hours is in worse shape than one that just tipped over. That clock
+starts with the first recorded flag. The feed can't tell us when it really began.
 
-**3. Draw a line.** At **55 and above**, the board says send a vehicle. Below that,
-a station is drifting but people can still rent and return. Above **70** it's
-critical and jumps the queue.
+**3. Draw a line.** For stations a vehicle can fix, **55 and above** means send
+one. Below that, the station hasn't crossed the dispatch line. At **70 and
+above** it's critical and jumps the queue. Broken hardware goes to a mechanic;
+counts more than an hour old need checking before anybody gets sent.
 
 **4. Show the work.** Every score opens into a receipt: the arithmetic, every
 number that fed into it, and where each of those numbers came from. There's a
@@ -134,17 +138,24 @@ the feed, or **fixture** where there's nothing to anchor it to at all.
 
 Those four steps produce the board. Everything else in the app runs off it —
 which stations need a mechanic instead of a vehicle, whether the people on shift
-can actually clear the list, and, at the end of the day, whether the trips that
-went out changed anything.
+can actually clear the list, and whether the stations we flagged recovered.
+
+You can compose a dispatch and assign one of the simulated vehicles. Nothing
+gets sent to a real driver. The app watches the live counts afterwards, but a
+change in the rack doesn't prove a delivery happened. Riders move bikes too.
 
 That last part matters more than it sounds. A dashboard that hands you a
 confident number you can't check is asking to be either obeyed blindly or
 ignored completely. This one tells you up front that the 55 line is a guess
 nobody has validated yet, and that the line isn't really what's limiting you
-anyway. Around 750 stations qualify on a normal afternoon. A fleet can finish
-maybe sixteen loads in a shift. **Capacity is the constraint, not the
+anyway. With around 750 stations qualifying in those readings, the example fleet
+can finish maybe sixteen loads in a shift. **Capacity is the constraint, not the
 threshold.** Moving the line changes the number you report at the end of the
 day, not the work that actually gets done.
+
+And a free vehicle isn't a standard unit. The example fleet now has vans that
+hold 18 bikes and box trucks that hold 48. Both are assumed capacities, but the
+difference matters: a job that fits in a truck can take several trips in a van.
 
 ---
 
@@ -154,14 +165,15 @@ Public data always sounds cleaner than it is. Everything below turned up by
 reading the live numbers and checking them against reality. None of it is
 written down in the official documentation.
 
-- **Some stations say they last reported in 1970.** 91 of them have no real
+- **Some stations say they last reported in 1970.** When I checked, 91 had no real
   timestamp. A few publish a placeholder date that's meant to say *"never
   reported"*, but read literally it comes out as decades ago. Those stations
   then rocket to the top of the list looking like emergencies, when the truth is
   that nobody has heard from them at all.
 
-- **Stations disagree with themselves.** 706 of the 2,509 report a bike count
-  and a dock count that don't add up to the size they claim to be. A station
+- **Stations disagree with themselves.** In those readings, 706 of the 2,509
+  reported a bike count and a dock count that didn't add up to the size they
+  claimed to be. A station
   might say it holds 73 bikes, then report 11 bikes and 56 free docks. That's
   67, not 73. So "how full is this?" gets measured against the slots that are
   actually working, not the number on the label. Otherwise a station that's
@@ -196,9 +208,9 @@ This covers **Citi Bike only.** It doesn't include private rental shops, and it
 doesn't include the dockless scooter and bike companies, which aren't in this
 feed and never will be. Citi Bike also doesn't serve Staten Island at all.
 
-The 2,509 stations break down like this: Brooklyn 894, Manhattan 681, Queens
-457, Bronx 367, Jersey City 76, Hoboken 34. Two of those six places aren't even
-in New York.
+That 2,509-station snapshot broke down like this: Brooklyn 894, Manhattan 681,
+Queens 457, Bronx 367, Jersey City 76, Hoboken 34. Two of those six places aren't
+even in New York. The app counts the current feed, so its totals will move on.
 
 ---
 
@@ -209,16 +221,16 @@ then the things you only watch.
 
 | Screen | What it does | Status |
 | --- | --- | --- |
-| **Rebalancing** | The ranked board. Every station too empty or too full for riders, worst first, with filters, search, and a receipt behind every score. A headline up top names the single worst thing on the network right now. | Live data |
-| **Map** | All 2,509 stations on real geography, coloured by how urgent they are or by which way they're failing. | Live data |
-| **Dispatch History** | Did the trips we sent actually fix anything? How much of each order arrived, and whether the station recovered. | Works, resets on reload |
-| **Vehicles** | The fleet grouped by when each vehicle frees up, each matched to a job worth doing. | Real logic, invented vehicles |
+| **Rebalancing** | The ranked board. Stations a vehicle can help, worst first, with filters, search, and a receipt behind every score. A headline names the worst thing on the network; the summary also shows how much work has gone to a mechanic. | Live data |
+| **Map** | Stations on real geography, grouped into clusters and coloured by urgency. Filter by borough, jump to a station, or look for nearby swap pairs. Vehicle markers show type, load and availability. | Live stations, invented vehicles |
+| **Dispatch History** | What happened after a simulated dispatch? Compares the requested move with changes in live counts and checks whether the station recovered. | Works, resets on reload |
+| **Vehicles** | Vans and box trucks grouped by when each frees up, each matched to a job worth doing given its load and carrying capacity. | Real logic, invented vehicles |
 | **Shift** | Can the people on tonight actually clear the queue? Runs needed against runs available, and the roster behind the answer. | Real arithmetic, invented staff |
-| **Work Orders** | Repairs a vehicle can't do — a dead dock, a station that won't take rentals — each on an SLA clock, matched to whoever on shift is qualified. | Live counts, invented crews |
+| **Work Orders** | Repairs a vehicle can't do — a dead dock, a station that won't take rentals — each on an SLA clock, with a recommended qualified mechanic. Assigning and closing orders aren't built yet. | Live counts, invented crews |
 | **Hardware & Docks** | Stations ranked by dead docks, broken bikes and flat e-bike batteries. The counterpart to Rebalancing, for the mechanic instead of the driver. | Live counts, modelled batteries |
 | **Not Reporting** | Stations that have gone quiet, and how much of the network their silence hides. | Live data |
 | **Site Health** | Reporting uptime, site power, the cellular link behind it all. Mostly context the feed can't give directly, and it says so. | Part live, part fixture |
-| **Network Performance** | The one screen that asks whether any of this works: it watches every flagged station and checks, poll by poll, whether it recovered. | Live, this session only |
+| **Network Performance** | Watches the worst 60 stations needing a vehicle on each poll, plus stations already tracked during the session, and checks whether they recovered. | Live readings, recent history saved locally |
 | **Zones** | The same board, narrowed to one borough. | Live data |
 | **Scoring method** | Every constant in the model tagged by how much it's worth trusting, plus the line between what the feed publishes and what the app models. | Live data |
 
@@ -226,16 +238,27 @@ then the things you only watch.
 
 ## The whole network at once
 
-![All 2,509 stations on the map, coloured by urgency](docs/screenshots/map.jpg)
+![Network Status Map with urgency clusters, borough filters and the simulated fleet](docs/screenshots/map.jpg)
 
-Every station Citi Bike runs, live. Red is critical, amber needs a vehicle, green
-is fine, grey isn't installed yet. The size of each dot is how many docks the
-station has, so a big failure looks big. Click any dot to open that station's
-receipt.
+The stations in the current feed, on real coordinates. Red is critical, amber
+is the middle urgency band, green is below the dispatch line. Hollow grey dots
+are stations that have gone quiet or aren't installed. A high score can still
+mean broken hardware, so the station's receipt tells you who can actually help.
 
-You can also flip the colours to show *which way* a station is failing: warm for
-out of bikes, cool for out of docks. Do that and the daily tide is obvious at a
-glance. Uptown drains, downtown clogs.
+For stations that need bikes moved, the size of the dot is **how many bikes the
+job calls for**. A big dot is a bigger load. Zoom out and the stations gather
+into clusters; click one to look closer. The legend filters the urgency bands,
+the borough control narrows the area, and search jumps to a station in view.
+
+Sometimes the bikes don't need to come from a depot. One station is packed and
+another a few blocks away is empty. The map connects those **swap pairs** when
+both cross the dispatch line and sit within 500 metres of each other, measured
+in a straight line. Zoom past the clusters to see the connections and how many
+bikes could move. One short trip can help both.
+
+The eight simulated vehicles are on the map too. Their shape tells you van or
+box truck, their colour tells you what they're doing, and the fill inside shows
+their load. Click one for its details and a link to that vehicle's fleet card.
 
 ---
 
@@ -246,23 +269,29 @@ real, what's faked, and what isn't there yet — as of September 2026, and this
 list keeps moving.
 
 **Real and working**
-- Live polling of the public feed, all 2,509 stations, refreshed every minute
+
+- Live polling of the public feed, refreshed every minute while the tab is visible
 - The full model — scoring, triage, capacity arithmetic, work-order SLAs — with
-  257 automated tests holding it in place
+  368 automated tests across 17 files holding it in place
 - The ranked board, filters, search, the score receipts, and a headline that
   names the worst thing on the network at any moment
-- The map, on real coordinates
-- Composing and sending a dispatch, then measuring whether the station recovered
-- A recovery record: every flagged station snapshotted on each poll, so the
-  board can say whether what it flagged actually got fixed — for as long as the
-  tab stays open
+- The map, on real coordinates, with urgency clusters, borough filters and
+  nearby swap pairs
+- Composing a simulated dispatch, then watching whether the live station counts
+  changed and the station recovered
+- A recovery record of the worst 60 qualifying stations per poll, plus stations
+  already tracked during the session. Readings are saved in this browser for up
+  to six hours, with a 9,000-reading cap that can trim the history sooner
 - The maintenance side: stations ranked by dead docks, broken bikes and flat
   batteries, and the work orders those turn into, each on an SLA clock
+- Inspecting a station's modelled rack, confirming a reported fault or marking
+  no fault found, and including broken-bike pickup instructions in a dispatch
 
 **Simulated**
-- **The vehicles.** Eight of them, with positions, loads and schedules, all
-  invented. The public feed contains no vehicles, because no operator publishes
-  them. The matching logic is real. The vehicles it matches are not.
+
+- **The vehicles.** Eight of them: three vans and five box trucks, with positions,
+  loads and schedules, all invented. The public feed contains no vehicles. The
+  matching logic is real. The vehicles it matches are not.
 - **The crews.** Eleven people across three shifts, with depots and
   qualifications. The arithmetic that works out whether they can clear the
   backlog is real; the people are not.
@@ -271,12 +300,14 @@ list keeps moving.
   bounded by a real count so it can't overclaim.
 
 **Not built yet**
-- Nothing is saved. Dispositions, assignments and dispatch history all reset
-  when you reload the page.
-- The recovery record only lasts as long as the tab is open. A scheduled worker
-  that would keep it running on its own is designed and sitting in `/worker`,
-  deliberately not deployed — a backend that silently collects nothing is worse
-  than no backend at all.
+
+- Saving the dispatch work. Dispositions, assignments, work-order changes and
+  dispatch history all reset when you reload the page. Recovery readings are
+  saved separately in the browser; there's no shared account or server history.
+- Watching the network while you're away. New readings stop when the tab is
+  hidden or closed. A scheduled worker that would keep collecting on its own
+  is scaffolded in [`worker/`](worker/README.md), deliberately not deployed — a
+  backend that silently collects nothing is worse than no backend at all.
 - 14 buttons across the app are **deliberately disabled**, each with a tooltip
   explaining what it would have done. They're switched off rather than left
   quietly broken, because a button that does nothing makes you doubt the parts
@@ -287,6 +318,41 @@ list keeps moving.
 ## Built with
 
 React, TypeScript, Vite, Tailwind, Zustand and Mapbox GL.
+
+---
+
+## Run it yourself
+
+With Node.js and npm installed, open a terminal in this folder:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open the local address Vite prints. The station feed is public, so the board
+doesn't need a key.
+
+The geographic map does need a public Mapbox token. Create `.env.local` in the
+project root and add:
+
+```dotenv
+VITE_MAPBOX_TOKEN=your_public_mapbox_token
+```
+
+Restart the dev server after adding it. Without a token, the map shows a labelled
+schematic with example pins. The live board still works. `.env.local` is ignored
+by Git.
+
+To check the code and make a production build:
+
+```sh
+npm test
+npm run typecheck
+npm run build
+```
+
+The build lands in `dist/`. Run `npm run preview` to look at it locally.
 
 ---
 
