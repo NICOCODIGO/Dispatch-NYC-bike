@@ -1,6 +1,7 @@
 import type { StationCategory } from '../model/score';
 import type { ScoredStation } from '../model/summary';
 import { laneOf } from '../model/triage';
+import type { Trend } from '../model/verify';
 import { isServing } from '../model/service';
 import { NO_PICKUP, applyTriage, pickupFor, type TriageLog } from '../model/pickup';
 import { bikesAt } from '../sim/fleet';
@@ -93,6 +94,7 @@ export function toStationRow(
   duration?: Duration,
   nowMs: number = Date.now(),
   triage: TriageLog = {},
+  trend?: Trend,
 ): StationRow {
   const { station, breakdown } = entry;
   const { fill, staleness } = breakdown;
@@ -154,6 +156,9 @@ export function toStationRow(
 
     stationNumber: `#${shortStationId(station.stationId)}`,
     action: unverified ? undefined : vehicleAction(breakdown),
+    // Direction is history, not a reading, so an unverified station keeps it:
+    // the counts cannot be trusted but the scores it already posted happened.
+    trend: trend ?? null,
     breakdown,
 
     // Carried through verbatim so the drawer can show the observations the

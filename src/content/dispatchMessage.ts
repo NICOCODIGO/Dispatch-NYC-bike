@@ -18,7 +18,11 @@ export function instructionFor(row: StationRow): string {
   const a = row.action;
   if (!a || a.kind === 'none') return 'assess on arrival';
   if (a.kind === 'mechanic') return 'mechanical fault — do not send a vehicle';
-  return a.kind === 'drop' ? `drop ${a.bikes} bikes` : `collect ${a.bikes} bikes`;
+  // "drop off" / "pick up", not "drop" / "collect". Bare "drop" was read as
+  // removal at least once — it is the *delivery* half of the pair, and it fires
+  // on stations with no bikes at all, where "drop 32" and "remove 32" look
+  // alike and mean opposite errands. The particle is what disambiguates it.
+  return a.kind === 'drop' ? `drop off ${a.bikes} bikes` : `pick up ${a.bikes} bikes`;
 }
 
 /**

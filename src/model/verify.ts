@@ -136,6 +136,71 @@ export function buildTracks(rows: SnapshotRow[]): Track[] {
   );
 }
 
+/**
+ * Which way a station is moving, and by how much.
+ *
+ * The board is full of ties. A large station that is empty or full scores
+ * `70 x 1.25 = 87.5` and rounds to 88, and so does every other large station in
+ * the same state — a dozen identical numbers above a dozen identical chips,
+ * where the ranking has stopped ranking. The score is right; it simply has no
+ * resolution left at the top, and adding decimals to it would only make the tie
+ * harder to see rather than easier to break.
+ *
+ * Direction breaks it, and it is a genuinely different question: two stations
+ * equally bad right now are not equally urgent if one is recovering and the
+ * other is still sliding. It is kept out of the score for the usual reason —
+ * the score answers "how bad", and a number you cannot audit from one feed
+ * reading is not one a dispatcher will trust — so it orders the queue instead.
+ *
+ * Measured against the first sighting this session, not the previous poll: a
+ * single poll is noise, and the session baseline is the same one `outcome` is
+ * classified from. It shares {@link OUTCOME_DELTA_TOLERANCE} for the same
+ * reason, so a row can never show a rising arrow beside a "still failing" chip.
+ */
+export type TrendDirection = 'worsening' | 'improving' | 'flat';
+
+export interface Trend {
+  /** Points moved since first sighting. Positive is worse. */
+  delta: number;
+  direction: TrendDirection;
+}
+
+export function trendOf(delta: number): Trend {
+  return {
+    delta,
+    direction:
+      delta > OUTCOME_DELTA_TOLERANCE
+        ? 'worsening'
+        : delta < -OUTCOME_DELTA_TOLERANCE
+          ? 'improving'
+          : 'flat',
+  };
+}
+
+/**
+ * Trend per station id. Null tracks yield an empty map rather than throwing —
+ * the first poll of a session has no history to compare against, and a board
+ * with no arrows is correct then, not broken.
+ */
+export function trendIndex(tracks: Track[] | null): Map<string, Trend> {
+  const index = new Map<string, Trend>();
+  if (!tracks) return index;
+  for (const t of tracks) index.set(t.stationId, trendOf(t.delta));
+  return index;
+}
+
+/**
+ * Sort comparator for equal scores: still sliding first, recovering last.
+ *
+ * Returns 0 for two stations moving the same way, so the caller's own next
+ * tiebreak still decides. Deliberately not a full ordering on its own.
+ */
+export const TREND_RANK: Record<TrendDirection, number> = {
+  worsening: 0,
+  flat: 1,
+  improving: 2,
+};
+
 export function countOutcomes(tracks: Track[]): Record<Outcome, number> {
   const counts: Record<Outcome, number> = { resolved: 0, 'still-failing': 0, worsened: 0 };
   for (const t of tracks) counts[t.outcome]++;

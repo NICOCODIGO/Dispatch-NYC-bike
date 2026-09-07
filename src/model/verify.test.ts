@@ -7,9 +7,12 @@ import {
   RECOVERY_HEALTHY,
   RECOVERY_WEAK,
   type Outcome,
+  TREND_RANK,
   buildTracks,
   classifyOutcome,
   countOutcomes,
+  trendIndex,
+  trendOf,
   recoveryBand,
   recoveryRate,
 } from './verify';
@@ -245,5 +248,68 @@ describe('building tracks from snapshots', () => {
     expect(track?.delta).toBe(0);
     expect(track?.outcome).toBe('still-failing');
     expect(track?.readings).toHaveLength(1);
+  });
+});
+
+describe('trend', () => {
+  it('calls a rise past the tolerance worsening', () => {
+    expect(trendOf(OUTCOME_DELTA_TOLERANCE + 1).direction).toBe('worsening');
+  });
+
+  it('calls a fall past the tolerance improving', () => {
+    expect(trendOf(-(OUTCOME_DELTA_TOLERANCE + 1)).direction).toBe('improving');
+  });
+
+  /*
+   * The boundary itself is flat, matching `classifyOutcome`: a station exactly
+   * at the tolerance has not moved enough to claim a direction. Asserted on
+   * both signs because an off-by-one here would show a rising arrow beside a
+   * "still failing" chip, which is the disagreement sharing the constant is
+   * meant to prevent.
+   */
+  it('treats movement at exactly the tolerance as flat', () => {
+    expect(trendOf(OUTCOME_DELTA_TOLERANCE).direction).toBe('flat');
+    expect(trendOf(-OUTCOME_DELTA_TOLERANCE).direction).toBe('flat');
+    expect(trendOf(0).direction).toBe('flat');
+  });
+
+  it('agrees with classifyOutcome about what counts as worsened', () => {
+    // Both read the same tolerance, so a track classified 'worsened' must
+    // never render a flat or improving arrow.
+    for (let delta = -12; delta <= 12; delta++) {
+      const first = 70;
+      const outcome = classifyOutcome(first, first + delta);
+      if (outcome === 'worsened') {
+        expect(trendOf(delta).direction).toBe('worsening');
+      }
+    }
+  });
+
+  it('carries the raw delta through unchanged', () => {
+    expect(trendOf(-9).delta).toBe(-9);
+  });
+
+  it('indexes by station id', () => {
+    // Both readings must be above the threshold: `buildTracks` measures from
+    // the first *flagged* one, so a sub-threshold opener would be dropped and
+    // the delta measured from the second reading instead.
+    const index = trendIndex(
+      buildTracks([
+        row({ stationId: 'a', t: 0, score: 70 }),
+        row({ stationId: 'a', t: 60_000, score: 90 }),
+      ]),
+    );
+    expect(index.get('a')?.direction).toBe('worsening');
+    expect(index.get('a')?.delta).toBe(20);
+  });
+
+  /* A first poll has no history; an empty map is the honest answer. */
+  it('returns an empty map for null tracks', () => {
+    expect(trendIndex(null).size).toBe(0);
+  });
+
+  it('ranks worsening ahead of flat ahead of improving', () => {
+    expect(TREND_RANK.worsening).toBeLessThan(TREND_RANK.flat);
+    expect(TREND_RANK.flat).toBeLessThan(TREND_RANK.improving);
   });
 });

@@ -14,7 +14,7 @@ import {
   summarizeDocks,
 } from '../sim/fleet';
 import { applyTriage, awaitingTriage, faultTally } from '../model/pickup';
-import { TONE, type Tone } from '../ui/tone';
+import { TONE, toneForScore, type Tone } from '../ui/tone';
 import {
   CAPACITY_WEIGHT_CAP,
   CATEGORY_LABEL,
@@ -249,7 +249,10 @@ export function ScoreDrawer({ row, onClose }: { row: StationRow; onClose: () => 
             )
           )}
 
-          <p className="mt-4 rounded-lg bg-[var(--color-sunken)] p-3 text-[10px] leading-relaxed text-[var(--color-ink-3)]">
+          {/* A hairline and plain text, not a tinted box. The tint made a
+              footnote about the refresh interval look like a callout, giving it
+              the same weight as the tinted blocks above that carry verdicts. */}
+          <p className="mt-4 border-t border-[var(--color-line)] pt-3 text-[10px] leading-relaxed text-[var(--color-ink-3)]">
             {SCORE_NOTE}
           </p>
         </div>
@@ -841,7 +844,7 @@ function headlineFor(
   }
 
   return {
-    action: `${a.kind === 'drop' ? 'Drop' : 'Collect'} ${a.bikes} bike${a.bikes === 1 ? '' : 's'}`,
+    action: `${a.kind === 'drop' ? 'Drop off' : 'Pick up'} ${a.bikes} bike${a.bikes === 1 ? '' : 's'}`,
     reason,
     tone: row.fillTone,
     tinted: true,
@@ -950,22 +953,54 @@ function LiveReceipt({
           />
         )}
 
-        <div className="mt-1 flex items-baseline justify-between gap-3 border-t border-[var(--color-ink)] pt-3">
-          <dt className="text-[12px] font-semibold text-[var(--color-ink)]">Urgency score</dt>
-          <dd className="num text-[16px] leading-none font-semibold text-[var(--color-ink)]">
-            {adjusted.score}
-            <span className="text-[11px] font-normal text-[var(--color-ink-3)]"> / 100</span>
-          </dd>
-        </div>
-        <p className="num mt-1 text-right text-[10px] text-[var(--color-ink-3)]">
-          {breakdown.weighted} + {staleness.penalty}
-          {durationPts > 0 && ` + ${durationPts}`}, rounded
-        </p>
-      </dl>
+        {/* The total, drawn on the 0-100 scale it is a point on.
+            The rows above are lengths — each contribution measured against the
+            widest term on this receipt — so the sum landed with nothing to
+            measure *it* against, and "98" read the same as "58". The track
+            gives the figure the one comparison that makes it mean something.
 
-      {/* The scale is drawn once, at the top of the drawer beside the badge.
-          Repeating it under the arithmetic would be the third statement of the
-          same fact, which is what this section was rebuilt to stop doing. */}
+            Not the same bar as the one in the action card at the top. That one
+            is the verdict: where this score sits against the dispatch line, with
+            a tick at 55. This one is the arithmetic: where the rows above landed
+            on 0-100, labelled with the weighted subtotal and the rounded result.
+            Different question, different labels, four sections apart. */}
+        <div className="mt-1 border-t border-[var(--color-ink)] pt-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-[12px] font-semibold text-[var(--color-ink)]">Urgency score</dt>
+            <dd className="num text-[20px] leading-none font-bold text-[var(--color-ink)]">
+              {adjusted.score}
+              <span className="text-[11px] font-normal text-[var(--color-ink-3)]"> / 100</span>
+            </dd>
+          </div>
+
+          <span
+            aria-hidden="true"
+            className="mt-2.5 block h-[6px] w-full overflow-hidden rounded-full"
+            style={{ backgroundColor: 'var(--color-line-soft)' }}
+          >
+            <span
+              className="block h-full rounded-full transition-[width]"
+              style={{
+                width: `${Math.min(100, Math.max(0, adjusted.score))}%`,
+                backgroundColor: TONE[toneForScore(adjusted.score)].fg,
+              }}
+            />
+          </span>
+
+          {/* `weighted -> score` rather than the full `87.5 + 0 + 10, rounded`.
+              Every term in that sum already has its own row directly above with
+              its own bar; restating them inline made the one line that should
+              close the receipt into a fourth copy of it. The arrow says what the
+              rounding did, which is the only step the rows do not show. */}
+          <div className="num mt-1.5 flex items-baseline justify-between text-[9.5px] text-[var(--color-ink-3)]">
+            <span>0</span>
+            <span>50</span>
+            <span>
+              {breakdown.weighted} &rarr; {adjusted.score}
+            </span>
+          </div>
+        </div>
+      </dl>
 
       <Verdict breakdown={breakdown} score={adjusted.score} />
     </>

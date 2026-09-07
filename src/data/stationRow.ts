@@ -79,6 +79,16 @@ export interface StationRow {
   pickup?: import('../model/pickup').PickupCall;
 
   /**
+   * Which way the score is moving, from the session's poll history.
+   *
+   * Kept beside `duration` rather than inside `breakdown` because it is not an
+   * input to the score — it is what breaks ties *between* equal scores, and the
+   * queue sorts on it once urgency has run out of resolution. Absent on the
+   * first poll of a session, when there is no history to compare against.
+   */
+  trend?: import('../model/verify').Trend | null;
+
+  /**
    * How long this station has been failing, from the poll history.
    *
    * Distinct from `updated`, and the two are easy to conflate: `updated` is

@@ -282,8 +282,8 @@ function WorkloadFinding({
       }
       detail={
         <>
-          {demand.deficit.toLocaleString('en-US')} bikes to deliver, {demand.surplus.toLocaleString('en-US')}{' '}
-          to collect — {demand.relocatable.toLocaleString('en-US')} of that just moves between
+          {demand.deficit.toLocaleString('en-US')} bikes to drop off, {demand.surplus.toLocaleString('en-US')}{' '}
+          to pick up — {demand.relocatable.toLocaleString('en-US')} of that just moves between
           stations, the rest runs through a depot.
           {idle > 0 && (
             <>
@@ -299,8 +299,8 @@ function WorkloadFinding({
         </>
       }
       stats={[
-        { label: 'to deliver', value: demand.deficit.toLocaleString('en-US'), tone: 'empty' },
-        { label: 'to collect', value: demand.surplus.toLocaleString('en-US'), tone: 'flood' },
+        { label: 'to drop off', value: demand.deficit.toLocaleString('en-US'), tone: 'empty' },
+        { label: 'to pick up', value: demand.surplus.toLocaleString('en-US'), tone: 'flood' },
         { label: 'relocatable', value: demand.relocatable.toLocaleString('en-US') },
         {
           label: 'loads',
@@ -473,9 +473,9 @@ function NextUp() {
                         }}
                       >
                         {action.kind === 'drop'
-                          ? `drop ${action.bikes} bikes`
+                          ? `drop off ${action.bikes} bikes`
                           : action.kind === 'collect'
-                            ? `collect ${action.bikes} bikes`
+                            ? `pick up ${action.bikes} bikes`
                             : 'no vehicle can fix'}
                       </span>
                     </span>
@@ -710,7 +710,7 @@ function MatchRow({ row, onAssign }: { row: FleetRow; onAssign: () => void }) {
         </span>
         <span className="block text-[10px] text-[var(--color-ink-3)]">
           <span style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}>
-            {drop ? 'drop' : 'collect'}{' '}
+            {drop ? 'drop off' : 'pick up'}{' '}
             {complete ? job.action.bikes : `${servable} of ${job.action.bikes}`}
           </span>{' '}
           · {minutes} min away · {match.why}

@@ -490,7 +490,11 @@ export function StatCard({
 
   const body = (
     <>
-      <span className="eyebrow flex items-center gap-1 text-[10px]">
+      {/* `min-h` of two lines, always. "Stations not reporting" wraps where the
+          other five labels do not, and without a floor the whole card below it
+          — number, bar, footer — sat a line lower than its neighbours, so one
+          tile in a row of six looked misaligned rather than longer-named. */}
+      <span className="eyebrow flex min-h-[22px] items-start gap-1 text-[10px]">
         {label}
         {hint && (
           <Icon
@@ -711,6 +715,14 @@ export interface ColumnHelpSpec {
    * different table than the one on screen.
    */
   values?: { label: string; gloss: string; tone?: Tone }[];
+  /**
+   * A way out of the tooltip, for a column whose full story is a page.
+   *
+   * "Why is this 93?" occurs to somebody while they are looking at the URGENCY
+   * column — not at a link under the pagination four hundred rows below, which
+   * is where the scoring document used to hide and why nobody found it.
+   */
+  more?: { to: string; label: string };
 }
 
 export function ColumnHelp({ title, spec }: { title: string; spec: ColumnHelpSpec }) {
@@ -742,12 +754,33 @@ export function ColumnHelp({ title, spec }: { title: string; spec: ColumnHelpSpe
               ))}
             </ul>
           )}
+          {/* Says where the icon goes, rather than being the link itself. A
+              link *inside* the panel is unreachable: the panel is
+              `pointer-events-none` and the tooltip hides on the trigger's
+              mouseleave, so the pointer can never arrive. The trigger below is
+              the real control. */}
+          {spec.more && (
+            <p className="mt-2 border-t border-[var(--color-line-soft)] pt-1.5 text-[10px] font-medium text-[var(--color-ink-3)]">
+              Click: {spec.more.label} →
+            </p>
+          )}
         </>
       }
     >
-      <span className="inline-flex text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]">
-        <Icon name="info" size={10} />
-      </span>
+      {spec.more ? (
+        <Link
+          to={spec.more.to}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={spec.more.label}
+          className="inline-flex cursor-pointer text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]"
+        >
+          <Icon name="info" size={10} />
+        </Link>
+      ) : (
+        <span className="inline-flex text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]">
+          <Icon name="info" size={10} />
+        </span>
+      )}
     </Tooltip>
   );
 }

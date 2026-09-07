@@ -83,8 +83,26 @@ export function StationAssets({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  /*
+   * Pinned with `right-0`, not centred by a `justify-end` flex parent.
+   *
+   * It was the second, and in Safari the panel vanished leftward. A flex item
+   * defaults to `min-width: auto`, so it will not shrink below its own
+   * min-content width; these rows are a grid of fixed tracks plus a nowrap
+   * button, and Safari sizes grid min-content more conservatively than Blink.
+   * Once the panel could not fit, `justify-end` pushed the excess off the *left*
+   * edge, where no scrollbar reaches it. The frame still drew, so what a reader
+   * saw was a panel with its station name, its tabs and its first four columns
+   * missing and the fifth flush against the border.
+   *
+   * `right-0` takes the flex sizing out of it entirely, which is what
+   * `ScoreDrawer` and the composer have always done and why neither ever showed
+   * this. `min-w-0` and the list's own `overflow-x-auto` are the belt to that
+   * brace: if a row is ever wider than the panel again, it scrolls instead of
+   * disappearing.
+   */
   return (
-    <div className="fixed inset-0 z-[78] flex justify-end">
+    <div className="fixed inset-0 z-[78]">
       <button
         type="button"
         aria-label="Close station assets"
@@ -96,7 +114,7 @@ export function StationAssets({
         role="dialog"
         aria-modal="true"
         aria-label={`Bikes and docks at ${row.name}`}
-        className="drawer-in relative flex w-[560px] max-w-full flex-col border-l border-[var(--color-line)] bg-[var(--color-surface)]"
+        className="drawer-in absolute inset-y-0 right-0 flex w-[560px] max-w-full min-w-0 flex-col border-l border-[var(--color-line)] bg-[var(--color-surface)]"
       >
         <div className="flex items-start justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
           <div className="min-w-0">
@@ -154,7 +172,7 @@ export function StationAssets({
         {/* The list scrolls, not the panel. That is the whole point of moving
             it here: a hundred rows can no longer push the rest of the interface
             off the screen, because there is no rest of the interface. */}
-        <div className="thin-scroll min-h-0 flex-1 overflow-y-auto px-4 py-2">
+        <div className="thin-scroll min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto px-4 py-2">
           {tab === 'bikes' ? (
             bikes.length === 0 ? (
               <Empty>Nothing on the rack — the station reports no bikes present.</Empty>

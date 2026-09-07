@@ -12,6 +12,7 @@ import { Mechanics } from './views/Mechanics';
 import { Hardware } from './views/Hardware';
 import { Shift } from './views/Shift';
 import { Analytics } from './views/Analytics';
+import { Scoring } from './views/Scoring';
 import { ZoneView } from './views/ZoneView';
 
 /**
@@ -56,6 +57,10 @@ export default function App() {
         {/* Analytics */}
         <Route path="/analytics" element={<Analytics />} />
 
+        {/* Reference, not a daily screen. Its own URL so it can be linked and
+            scrolled — it was a modal, which could be neither. */}
+        <Route path="/scoring" element={<Scoring />} />
+
         {/* Zones */}
         <Route path="/zone/:slug" element={<ZoneView />} />
 
@@ -74,6 +79,7 @@ export default function App() {
         <Route path="/mechanics" element={<Navigate to="/maintenance/orders" replace />} />
         <Route path="/unverified" element={<Navigate to="/monitoring/unverified" replace />} />
         <Route path="/dispatch" element={<Navigate to="/" replace />} />
+        <Route path="/method" element={<Navigate to="/scoring" replace />} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

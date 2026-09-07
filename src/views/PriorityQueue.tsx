@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageBody, PageHeader } from '../shell/AppShell';
 import { Icon } from '../ui/Icon';
-import { Donut, Legend } from '../ui/charts';
 import {
   ArrivalBanner,
   Banner,
   Button,
   Card,
-  CardHead,
   Dot,
   FilterChip,
   Pagination,
@@ -23,27 +21,27 @@ import { TONE, type Tone } from '../ui/tone';
 import { ScorePeek } from '../ui/ScorePeek';
 import { OutcomeChip } from './DispatchHistory';
 import { latestRunFor, outcomeOf, type DispatchRun } from '../data/dispatchRun';
-import { MethodSheet } from './MethodSheet';
 import { COLUMN_HELP } from '../content/columns';
 import { SituationFinding } from '../content/situation';
-import { matchesOutsideQueue, networkDocks, rebalanceDemand } from '../data/insights';
-import { SHIFTS, shiftCapacity } from '../model/roster';
+import { DispatchComposer } from './DispatchComposer';
+import { matchesOutsideQueue, networkDocks } from '../data/insights';
 import { assessSituation } from '../model/situation';
 import { backlog } from '../model/workOrder';
 import { hardwareLoad, hardwareTotals } from '../data/hardware';
 import { DISPOSITION_LABEL, useConsole, type Disposition } from '../state/useConsole';
 import { toStationRow } from '../data/adapt';
+import { verdictFor, wantsVehicle } from '../data/verdict';
 import type { StationRow } from '../data/stationRow';
 import { BOROUGHS, type Borough } from '../data/boroughs';
-import { NEEDS_VEHICLE_THRESHOLD, type StationCategory } from '../model/score';
+import type { StationCategory } from '../model/score';
 import { applyFilters } from '../model/queue';
 import { QueueStats } from './QueueStats';
 import { FEED_STALE_MS, useDispatch, type SortKey } from '../store/useDispatch';
 import { formatClock } from '../lib/time';
 import { durationIndex } from '../data/duration';
+import { TREND_RANK, trendIndex, type Trend } from '../model/verify';
 import { useSessionHistory } from '../state/useHistory';
 import { useArrival, useScrollToFocus } from '../state/useFocus';
-import { ROSTER, VEHICLES, VEHICLE_STATE_LABEL, VEHICLE_STATE_TONE } from '../mock/data';
 import { cn } from '../lib/cn';
 
 /**
@@ -54,8 +52,11 @@ import { cn } from '../lib/cn';
  * unreadable stations are not filtered out here; they were routed to their own
  * screens by `triage.ts` before this component ever sees them.
  *
- * The rail's Active Vehicles card is still fixtures: GBFS has no vehicles, and
- * nothing in the feed can populate it.
+ * The 240px summary rail is gone and the table has the full page. Every card on
+ * it — Shift, Active vehicles, Maintenance, Fill distribution — restated a
+ * screen that already owns the number at full size, so they went back to Fleet
+ * and Maintenance; the fill donut was dropped rather than moved, being a shape
+ * nobody acts on from a worst-first queue.
  */
 
 /**
@@ -128,7 +129,7 @@ const COLUMNS: {
   // 112 rather than 92: the header is the widest thing in this column, and
   // "URGENCY" plus a sort caret plus a help icon ran the full 92 with nothing
   // left, so the label sat flush against STATION.
-  { key: 'score', label: 'Urgency', width: 112, help: 'score' },
+  { key: 'score', label: 'Urgency', width: 150, help: 'score' },
   // Widest column, because it holds the longest strings — and it carries the
   // borough now too, in the "{borough} · N docks" line under the name. A
   // dedicated Borough column was a full stack of the word "Manhattan" doing a
@@ -142,7 +143,11 @@ const COLUMNS: {
   // numbers was dropped — the pair already tells the balance story. Headed
   // "Docks" (which of the two numbers is the open one is left to the ⓘ) rather
   // than "Bikes / Open", which read as a two-word label for one column.
-  { key: 'fill', label: 'Docks', width: 104, help: 'docks' },
+  { key: 'fill', label: 'Bikes / Free', width: 150, help: 'docks' },
+  // The instruction, not the diagnosis. Read but not orderable: sorting by "how
+  // many bikes" would rank a 40-bike surplus above a station with nothing at
+  // all, which is the opposite of worst-first.
+  { label: 'Move', width: 130, help: 'move' },
   // Just the status pill now — the "collect ~50" instruction that used to share
   // this cell moved to the drawer. 200px for a 60px pill left a canyon between
   // this header and the next; sized for the header now.
@@ -190,11 +195,15 @@ export function PriorityQueue() {
   const dispatched = useConsole((s) => s.dispatched);
   const workOrders = useConsole((s) => s.workOrders);
   const [showSnoozed, setShowSnoozed] = useState(false);
-  const [method, setMethod] = useState(false);
+  /* The composer, opened straight from a row. It mounts here as well as in the
+     drawer, but both hand the same `row` to the same component — one path with
+     two doors, not two paths to keep in step. */
+  const [composeRow, setComposeRow] = useState<StationRow | null>(null);
 
   const history = useSessionHistory();
   const { tracks } = history;
   const durations = useMemo(() => durationIndex(tracks), [tracks]);
+  const trends = useMemo(() => trendIndex(tracks), [tracks]);
 
 
   // The situation headline — the single worst thing on the network right now,
@@ -247,7 +256,13 @@ export function PriorityQueue() {
    */
   const allRows: StationRow[] = useMemo(() => {
     const mapped = filtered.map((entry) =>
-      toStationRow(entry, durations.get(entry.station.stationId), situationNow, triage),
+      toStationRow(
+        entry,
+        durations.get(entry.station.stationId),
+        situationNow,
+        triage,
+        trends.get(entry.station.stationId),
+      ),
     );
 
     if (filters.sortKey !== 'score') return mapped;
@@ -275,9 +290,33 @@ export function PriorityQueue() {
     return [...mapped].sort((a, b) => {
       const byResponse = nudge(b) - nudge(a);
       if (byResponse !== 0) return byResponse;
-      return dir * ((b.score ?? -1) - (a.score ?? -1));
+
+      const byScore = dir * ((b.score ?? -1) - (a.score ?? -1));
+      if (byScore !== 0) return byScore;
+
+      /*
+       * Ties are the common case, not the edge case.
+       *
+       * Every large station that is empty or full scores `70 x 1.25 = 87.5`,
+       * so a full page can read 88 twelve times over and the ranking has
+       * stopped ranking. Direction is the tiebreak: of two stations equally
+       * bad right now, the one still sliding is the one to send to. It never
+       * touches the score — a station is not more broken for trending, only
+       * more urgent, and those are different questions.
+       *
+       * Unaffected by `dir`. Ascending urgency is a way of reading the same
+       * board from the other end; it is not a request to be sent to the
+       * recovering stations first.
+       */
+      const byTrend =
+        TREND_RANK[a.trend?.direction ?? 'flat'] - TREND_RANK[b.trend?.direction ?? 'flat'];
+      if (byTrend !== 0) return byTrend;
+
+      // Last resort, so the order is stable across polls rather than shuffling
+      // under the reader whenever two rows tie on everything above.
+      return a.name.localeCompare(b.name);
     });
-  }, [filtered, durations, runs, filters.sortKey, filters.sortDir, situationNow, triage]);
+  }, [filtered, durations, trends, runs, filters.sortKey, filters.sortDir, situationNow, triage]);
 
   // Snoozing is a decision to stop being shown something. Hiding it is the
   // whole point — but silently, with no count and no way back, it becomes a
@@ -354,16 +393,18 @@ export function PriorityQueue() {
         subtitle={
           summary ? (
             <>
+              {/* Two lines. A paragraph explaining the scoring model used to
+                  sit between these two — read once on somebody's first day and
+                  skipped every day after, while occupying the space above the
+                  thing they came for. It is behind the "How scoring works"
+                  link under the table, which is where a reader goes when they
+                  actually want it. */}
               <span className="block text-[13px] font-medium text-[var(--color-ink)]">
                 Stations too empty or too full for riders, worst first.
               </span>
-              <span className="mt-1 block">
-                Every station scores 0–100 for how badly it needs a vehicle. At 55 it is worth the
-                trip. Stations that are broken or have gone quiet are not here — a vehicle cannot fix
-                those, so they have their own screens.
-              </span>
               <span className="mt-1 block text-[var(--color-ink-3)]">
-                {summary.total.toLocaleString('en-US')} stations · refreshed every minute
+                {summary.total.toLocaleString('en-US')} stations · refreshed every minute · broken
+                and silent stations have their own screens
               </span>
             </>
           ) : (
@@ -415,42 +456,25 @@ export function PriorityQueue() {
           history={history}
         />
 
-        {/* `items-start` matters: grid rows stretch their children by default,
-            so the table card grew to match the taller rail beside it and ended
-            with a slab of empty white under the pagination. Cards should be as
-            tall as what is in them; leftover room is canvas, not card.
+        {/* One column, full width. This was a two-track grid with a 240px rail
+            beside the table — Shift, Active vehicles, Maintenance and Fill
+            distribution. Every one of them was a summary of a screen that says
+            the same thing at full size, so they moved out to Fleet and
+            Maintenance and the fill donut was dropped outright. With nothing
+            left to sit beside, the table takes the whole page: a 240px reserve
+            held open for cards that no longer exist is just a margin.
 
-            The rail was 168px in the comp, sized around three-digit fixtures.
-            Live figures are four digits and the score-band labels are real
-            sentences, so it needs the room.
-
-            `grid-rows-[auto_1fr]` matters for the same reason, and the bug it
-            fixes only appeared on an empty board. The rail spans both rows; when
-            a grid item spans two `auto` tracks and is taller than their combined
-            content, the excess is split evenly between them. With a full table
-            the table's row is the tallest thing in the grid and there is no
-            excess — but filter the queue down to nothing and the rail becomes
-            the tallest, so half its surplus was handed to row one. The filter
-            bar stayed pinned to the top of a suddenly 270px row and the table
-            appeared to have sunk to the middle of the page. Making row two the
-            flexible track sends the whole surplus there, where it is canvas
-            below a short card instead of a hole above it. */}
-        <div className="mt-3 grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_240px] xl:grid-rows-[auto_1fr]">
+            The grid stays rather than becoming a plain stack so the filter bar
+            and the table keep their `col-start-1` placement, and `items-start`
+            still matters — rows stretch their children by default, and a card
+            grown past its content ends in a slab of empty white. */}
+        <div className="mt-3 grid items-start gap-3">
           {/* One strip. Everything that narrows the table, plus the action you
               take once it is narrowed, in the order you use them: find it,
               scope it, then dispatch. The "Filter by status" eyebrow the comp
               carried is gone — five dotted chips with counts do not need
               labelling, and dropping it is what fits the row on one line. */}
-          {/* Column one, same as the board. It used to span both columns, which
-              put its right edge — and so the Dispatch Vehicle button — 240px past
-              the table it filters, out beyond the rail. A control bar wider than
-              the thing it controls reads as belonging to the page rather than to
-              the table, which is the wrong claim: every control in here narrows
-              the rows below and nothing else on the screen.
-
-              Placed explicitly rather than wrapped in a flex column, so the rail
-              can still span both rows beside it. */}
-          <Card className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 xl:col-start-1 xl:row-start-1">
+          <Card className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
             <SearchInput
               value={filters.search}
               onChange={(v) => setFilters({ search: v })}
@@ -537,7 +561,7 @@ export function PriorityQueue() {
             </div>
           </Card>
 
-          <Card className="overflow-hidden xl:col-start-1 xl:row-start-2">
+          <Card className="overflow-hidden">
             <div className="overflow-x-auto">
               {/* `table-fixed` stays, even though paging no longer strictly
                   needs it.
@@ -598,6 +622,7 @@ export function PriorityQueue() {
                         focused={arrival.focus === row.id}
                         run={latestRunFor(runs, row.id) ?? undefined}
                         onOpen={() => openStation(row.id)}
+                        onDispatch={() => setComposeRow(row)}
                       />
                     ))}
                   </tbody>
@@ -639,58 +664,58 @@ export function PriorityQueue() {
                   </>
                 )}
 
-                {/* The rule this board ranks on, stated as a fact among the
-                    other facts — not as a control that can be mistaken for a
-                    filter, which is what it looked like up in the strip. */}
-                <span aria-hidden="true">·</span>
-                <span>
-                  dispatch at ≥ <span className="num">{NEEDS_VEHICLE_THRESHOLD}</span>
-                </span>
+                {/* "dispatch at >= 55" stood here, the last residue of a filter
+                    chip that was killed for reading as a setting. Relocating it
+                    made sense when there was nowhere better; there is now. The
+                    same fact is carried by the badge colour, by two lines of the
+                    Urgency help, and by a page devoted to it — and this was the
+                    one telling of it with no context, a bare threshold on an
+                    unnamed scale. Five copies of a constant is how a legend ends
+                    up describing a different product than the one on screen. */}
 
-                {/* Named after what it opens. The old trigger was labelled with
-                    the threshold, so it announced a number and delivered a
-                    document about ten of them. */}
+                {/* Kept, but no longer the only way in. "Why is this 93?"
+                    occurs to somebody looking at the URGENCY column, not at the
+                    pagination four hundred rows below it, which is why nobody
+                    found this. The column's own ⓘ now links to the same page. */}
                 <span aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={() => setMethod(true)}
+                <Link
+                  to="/scoring"
                   title="Every constant behind the score, where it came from, and what moving it does."
-                  className="inline-flex cursor-pointer items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-[var(--color-ink)]"
+                  className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-[var(--color-ink)]"
                 >
                   <Icon name="file-text" size={11} />
                   How scoring works
-                </button>
+                </Link>
               </p>
               <Pagination page={safePage} pageCount={pageCount} onChange={setPage} />
             </div>
           </Card>
 
-          {/* The Score Guide card used to sit here. It was a second, hand-kept
-              copy of the bands the Score column's ⓘ already published, so it is
-              now only in the ⓘ — one list, derived from the two constants. */}
-          {/* Ordered by how directly each answers "what should happen next".
-              Whether the shift can clear the board comes before which vehicles
-              are moving, which comes before the work a vehicle cannot do, which
-              comes before the network's shape. Every card is a summary with a
-              way through to the screen that owns it, so the rail is a set of
-              doors rather than a set of readouts. */}
-          <aside
-            className="flex flex-col gap-3 xl:col-start-2 xl:row-start-1 xl:row-span-2"
-            aria-label="Shift, fleet and network summary"
-          >
-            <ShiftCard />
-            <ActiveVehicles />
-            <MaintenanceCard />
-            <FillDistribution />
-          </aside>
+          {/* A 240px rail of five summary cards stood here and is gone. Score
+              Guide duplicated the bands the Urgency ⓘ publishes; Shift and
+              Active vehicles duplicated Fleet; Maintenance duplicated the
+              Mechanics and Hardware screens, which state the same open-order
+              and dead-dock figures at full size. Fill distribution was dropped
+              outright — a donut of the whole network is not a thing you do
+              anything about from a worst-first queue.
+
+              A card that summarises another screen is a card whose only real
+              content is "go look over there", which is what the sidebar is
+              for. The page is the table now. */}
         </div>
       </PageBody>
+
+      {composeRow && <DispatchComposer row={composeRow} onClose={() => setComposeRow(null)} />}
 
       {/* The composer used to mount here too, for the strip's dispatch button.
           With that gone, the only route to it is a station's own drawer — which
           is where the readiness checks live, so there is now exactly one way to
-          commit a vehicle rather than two that had to be kept in step. */}
-      {method && <MethodSheet onClose={() => setMethod(false)} />}
+          commit a vehicle rather than two that had to be kept in step.
+
+          The method sheet used to mount here as well. It was several screens of
+          reference material in a modal, which is a container for one decision —
+          it is the Scoring page now, with a URL that can be linked and
+          scrolled. */}
     </>
   );
 }
@@ -703,12 +728,15 @@ function QueueRow({
   focused = false,
   run,
   onOpen,
+  onDispatch,
 }: {
   row: StationRow;
   selected: boolean;
   focused?: boolean;
   run?: DispatchRun;
   onOpen: () => void;
+  /** Opens the composer for this row, without going through the drawer. */
+  onDispatch: () => void;
 }) {
   return (
     <tr
@@ -723,12 +751,22 @@ function QueueRow({
       }
     >
       <Td>
-        <ScorePeek
-          breakdown={row.breakdown}
-          duration={row.duration}
-          signals={hardwareCounts(row)}
-          onOpen={onOpen}
-        />
+        <span className="flex items-center gap-1.5">
+          <ScorePeek
+            breakdown={row.breakdown}
+            duration={row.duration}
+            signals={hardwareCounts(row)}
+            onOpen={onOpen}
+          />
+          {/* "88 out of what?" was a real reader's first question, and the
+              badge alone could not answer it — twelve bare numbers in a column
+              teach a scale to nobody who does not already have one. The
+              denominator is four characters and it is only ever read once. */}
+          {row.score !== null && (
+            <span className="num text-[9.5px] leading-none text-[var(--color-ink-3)]">/100</span>
+          )}
+          <TrendArrow trend={row.trend} />
+        </span>
       </Td>
 
       <Td>
@@ -754,11 +792,22 @@ function QueueRow({
               {row.warning}
             </span>
           ) : (
-            // Hardware faults used to ride this line instead of the borough,
-            // because the Status cell had no room for them. Now that they have
-            // their own Signals column, this always reads the same way.
+            /*
+             * The dock count says how many docks *work*, not how many exist,
+             * whenever those differ.
+             *
+             * A row reading "1 / 0 - Full" over a subtitle saying "87 docks"
+             * looks like a bug, and a reader who thinks the tool is broken
+             * stops using it. Nothing was wrong: 86 of those docks are dead, so
+             * the station really is full of its one working slot. But the row
+             * published the nameplate — the one denominator CLAUDE.md forbids
+             * using — and left the contradiction unexplained.
+             *
+             * Only when the two disagree. On a healthy station "87 docks" is
+             * both true and shorter.
+             */
             <span className="mt-px block truncate text-[10px] text-[var(--color-ink-3)]">
-              {row.borough} · <span className="num">{row.docks}</span> docks
+              {row.borough} · <DockCount row={row} />
             </span>
           )}
         </button>
@@ -778,9 +827,19 @@ function QueueRow({
         </span>
       </Td>
 
-      {/* Just the status. The "drop ~40 · +2 dead" instruction that used to
-          trail the pill moved to the drawer's action card — in the queue it was
-          restating the Urgency the row already earned. */}
+      {/* How many bikes, and which way.
+          This lived inside the Status cell once, crammed beside the pill in
+          200px, and was cut for good reason. It came back because it is the
+          number a dispatcher plans a run from — without it the board can be
+          read but not acted on, one station at a time through the drawer. The
+          fix for a cramped cell was a column of its own, which the page had no
+          room for until the summary rail came out. */}
+      <Td>
+        <MoveCell row={row} />
+      </Td>
+
+      {/* Just the status. The instruction that used to trail the pill has its
+          own column now. */}
       <Td>
         <StatusPill label={row.status} tone={row.fillTone} />
       </Td>
@@ -802,7 +861,7 @@ function QueueRow({
       </Td>
 
       <Td>
-        <DispositionCell row={row} />
+        <DispositionCell row={row} onDispatch={onDispatch} />
         {run && (
           <span className="mt-1 block">
             <OutcomeChip run={run} />
@@ -924,21 +983,59 @@ function OffQueueHits({
  * a form control behind a pointer event is how a table stops being reachable by
  * keyboard, and this is the only cell here anyone can actually change.
  */
-function DispositionCell({ row }: { row: StationRow }) {
+/**
+ * What to do about this row, and what you already decided.
+ *
+ * These were two things and this column only ever showed the second. A select
+ * whose options include the word "Dispatched" sat at the end of every row and
+ * dispatched nothing — it recorded that you had. A dispatcher read the board,
+ * reached the right-hand edge, found a menu naming the action, chose it, and
+ * no vehicle moved. Reported as "there's no assign" by somebody looking
+ * straight at it, which is the clearest possible evidence that a log in an
+ * action's position is read as an action.
+ *
+ * So the cell leads with the action while there is one to take, and becomes the
+ * log once taken. One column answers "what do I do" and then "what did I
+ * decide", in that order, which is the order they happen in.
+ *
+ * The button is gated on the verdict, not on the score: `wantsVehicle` is the
+ * same test the drawer's footer and the Move column use, so the three cannot
+ * offer different answers for one station. Below the line there is no button at
+ * all — an enabled control is a recommendation, and recommending a run to a
+ * station that is still serving riders is what the whole threshold exists to
+ * prevent.
+ */
+function DispositionCell({ row, onDispatch }: { row: StationRow; onDispatch: () => void }) {
   const dispositions = useConsole((s) => s.dispositions);
   const setDisposition = useConsole((s) => s.setDisposition);
   const current = dispositions[row.id];
 
+  const verdict = row.breakdown ? verdictFor(row.breakdown, row.score ?? 0) : null;
+  const sendable = verdict !== null && wantsVehicle(verdict);
+
+  if (!current && sendable) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDispatch();
+        }}
+        title={`Send a vehicle to ${row.name}`}
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-ink)] bg-[var(--color-ink)] px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-white transition-colors hover:bg-[#3a332b]"
+      >
+        <Icon name="vehicle" size={12} />
+        Dispatch
+      </button>
+    );
+  }
+
   return (
     <span className="relative block">
-      {!current && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 flex items-center px-1.5 text-[11px] text-[var(--color-ink-3)] transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-        >
-          —
-        </span>
-      )}
+      {/* Blank at rest, not an em-dash. Twelve dashes down a column is twelve
+          marks saying "nothing here", which is what an empty cell already says
+          more quietly. The select still fades in on hover, so the affordance is
+          unchanged — only the placeholder is gone. */}
       <select
         value={current ?? ''}
         onClick={(e) => e.stopPropagation()}
@@ -986,6 +1083,130 @@ function updatedTone(row: StationRow): Tone {
 }
 
 /**
+ * The dock count, stated as working slots whenever that differs from nameplate.
+ *
+ * `usableSlots` is `bikesAvailable + docksAvailable`, so dead docks and docks
+ * jammed by a broken bike are already out of it — which is correct, and is why
+ * a station with one working slot holding one bike is genuinely Full. The row
+ * just never said so, and "1 / 0 - Full" over "87 docks" reads as arithmetic
+ * that does not work.
+ *
+ * Only when the gap is wide enough to be the thing that confuses a reader.
+ * Printing it on any disagreement at all was the first attempt and it fired on
+ * five rows in six — almost every station has a dock or two out — which turned
+ * a flag for the alarming case into a line of boilerplate that stopped being
+ * read. "53 of 59" explains nothing anybody was puzzled by; "1 of 87" is the
+ * whole answer to why the row looks broken.
+ */
+const DOCKS_USABLE_NOTE_BELOW = 0.8;
+
+function DockCount({ row }: { row: StationRow }) {
+  const capacity = row.raw?.capacity ?? row.docks;
+  const usable = row.raw?.usableSlots;
+
+  if (usable === undefined || capacity <= 0 || usable / capacity >= DOCKS_USABLE_NOTE_BELOW) {
+    return (
+      <>
+        <span className="num">{row.docks}</span> docks
+      </>
+    );
+  }
+
+  return (
+    <span title={`${capacity - usable} of ${capacity} docks are out of service, so fill is measured against the ${usable} that work.`}>
+      <span className="num">{usable}</span> of <span className="num">{capacity}</span> docks usable
+    </span>
+  );
+}
+
+/**
+ * What a vehicle should do here, and how much of it.
+ *
+ * The direction carries the colour the rest of the board uses: warm for the
+ * empty side, cool for the full side. A mechanic-lane station says so in words
+ * rather than showing a bike count, because the count would be an instruction
+ * nobody can carry out.
+ */
+function MoveCell({ row }: { row: StationRow }) {
+  const a = row.action;
+  const verdict = row.breakdown ? verdictFor(row.breakdown, row.score ?? 0) : null;
+
+  if (verdict === 'mechanic' || a?.kind === 'mechanic') {
+    return (
+      <span className="text-[10px]" style={{ color: TONE.empty.fg }}>
+        needs a mechanic
+      </span>
+    );
+  }
+
+  /*
+   * No instruction below the dispatch line.
+   *
+   * `vehicleAction` answers "which way, and how many" from the category alone,
+   * so a starving or flooded station returns a crisp "pick up 26" at a score of
+   * 48 — below the line, drifting, still serving riders on both sides. Printing
+   * that made the board read as a queue of 951 jobs when 679 are the actual
+   * work, and it is the same failure as a big red score over the words "no
+   * vehicle needed yet": the instruction contradicts the verdict.
+   *
+   * Read from `verdictFor` rather than by comparing the score here, because a
+   * component comparing against the threshold itself is how four surfaces once
+   * drifted apart.
+   */
+  if (verdict === 'unverified' || !verdict || !wantsVehicle(verdict)) {
+    return (
+      <span className="text-[10px] text-[var(--color-ink-3)]">
+        {verdict === 'unverified' ? 'not scored' : 'watch'}
+      </span>
+    );
+  }
+
+  if (!a || a.kind === 'none' || a.bikes === 0) {
+    return <span className="text-[10px] text-[var(--color-ink-3)]">&mdash;</span>;
+  }
+
+  const drop = a.kind === 'drop';
+  return (
+    <span
+      className="whitespace-nowrap text-[11px] font-medium"
+      style={{ color: drop ? TONE.empty.fg : TONE.flood.fg }}
+    >
+      {drop ? 'drop off' : 'pick up'} <span className="num font-semibold">{a.bikes}</span>
+    </span>
+  );
+}
+
+/**
+ * Which way the score has moved this session, as one glyph.
+ *
+ * The board ties constantly — a dozen rows reading 88 — and the tie is now
+ * broken by direction, so the order is only honest if the reader can see the
+ * thing it was broken on. Without this the queue silently ranks two identical
+ * numbers and looks arbitrary doing it.
+ *
+ * Only worsening is coloured. A recovering station is good news on a screen
+ * where every other colour means damage, and drawing it in green would put a
+ * reassuring mark on a row still above the dispatch line. Flat renders nothing:
+ * most rows are flat, and a column of grey dashes is the exact noise the
+ * DECISION placeholder was just deleted for being.
+ */
+function TrendArrow({ trend }: { trend?: Trend | null }) {
+  if (!trend || trend.direction === 'flat') return null;
+
+  const worse = trend.direction === 'worsening';
+  return (
+    <span
+      title={`${worse ? 'Worsening' : 'Improving'} \u2014 ${worse ? '+' : ''}${trend.delta} points since first seen this session`}
+      aria-label={`${worse ? 'worsening' : 'improving'} by ${Math.abs(trend.delta)} points`}
+      className="num shrink-0 text-[10px] leading-none font-semibold"
+      style={{ color: worse ? TONE.empty.fg : 'var(--color-ink-3)' }}
+    >
+      {worse ? '\u25b2' : '\u25bc'}
+    </span>
+  );
+}
+
+/**
  * Dock and bike hardware the operator's own feed reports broken here.
  *
  * Had its own "Signals" column until the count of broken bikes read better as
@@ -998,258 +1219,5 @@ function hardwareCounts(row: StationRow): { dead: number; broken: number } {
     dead: row.raw?.docksDisabled ?? 0,
     broken: row.raw?.bikesDisabled ?? 0,
   };
-}
-
-/* ---------------------------------------------------------------------------
-   The rail.
---------------------------------------------------------------------------- */
-
-function RailLink({ to, label }: { to: string; label: string }) {
-  return (
-    <Link
-      to={to}
-      aria-label={label}
-      className="text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-ink)]"
-    >
-      <Icon name="chevron-right" size={13} />
-    </Link>
-  );
-}
-
-/**
- * The number a rail card leads with.
- *
- * Every card in this column was a list before, which meant the answer to
- * "is this fine?" had to be assembled from three rows of prose. A figure, a
- * label, and one line of consequence is the smallest thing that answers it
- * from across the room.
- */
-function RailStat({
-  value,
-  unit,
-  label,
-  tone = 'ink',
-}: {
-  value: string | number;
-  unit?: string;
-  label: ReactNode;
-  tone?: Tone;
-}) {
-  return (
-    <div className="px-3.5 pb-1">
-      <p className="num text-[24px] leading-none font-semibold" style={{ color: TONE[tone].fg }}>
-        {value}
-        {unit && (
-          <span className="ml-1 text-[12px] font-normal text-[var(--color-ink-3)]">{unit}</span>
-        )}
-      </p>
-      <p className="mt-1.5 text-[10.5px] leading-snug text-[var(--color-ink-2)]">{label}</p>
-    </div>
-  );
-}
-
-/**
- * Can this shift clear what is on the board?
- *
- * The method sheet argues capacity is the real constraint and the Shift screen
- * proves it with arithmetic. Neither is visible from the queue, which is the
- * screen where somebody is actually deciding what to do — so the answer lives
- * here too, in one line, with the working one click away.
- */
-function ShiftCard() {
-  const lane = useDispatch((s) => s.lanes.vehicle);
-  const workOrders = useConsole((s) => s.workOrders);
-
-  const now = Date.now();
-  const demand = useMemo(() => rebalanceDemand(lane), [lane]);
-  const activeCapacity = VEHICLES.filter((t) => t.state !== 'idle').reduce(
-    (sum, t) => sum + t.capacity,
-    0,
-  );
-
-  const cap = useMemo(
-    () =>
-      shiftCapacity(ROSTER, workOrders, {
-        relocatable: demand.relocatable,
-        vehicleCapacity: activeCapacity,
-        date: new Date(now),
-      }),
-    [workOrders, demand.relocatable, activeCapacity, now],
-  );
-
-  const short = cap.shortfall !== null && cap.shortfall < 0;
-  const label = SHIFTS.find((s) => s.key === cap.shift)?.label ?? cap.shift;
-
-  return (
-    <Card>
-      <CardHead
-        title={label}
-        right={<RailLink to="/fleet/shift" label="Open the shift view" />}
-      />
-      <RailStat
-        value={cap.runsAvailable}
-        unit={cap.runsNeeded === null ? undefined : `of ${cap.runsNeeded} runs`}
-        tone={short ? 'empty' : 'ok'}
-        label={
-          cap.runsNeeded === null
-            ? 'No active vehicle capacity to divide the backlog into.'
-            : short
-              ? `Short by ${Math.abs(cap.shortfall ?? 0)}. The rest carries to the next shift.`
-              : 'Enough to clear the rebalancing backlog.'
-        }
-      />
-      <div className="mt-2 flex items-center justify-between gap-3 border-t border-[var(--color-line-soft)] px-3.5 py-2 text-[10px]">
-        <span className="text-[var(--color-ink-3)]">
-          <span className="num text-[var(--color-ink-2)]">{cap.onShift.length}</span> of{' '}
-          <span className="num">{ROSTER.length}</span> on shift
-        </span>
-        {cap.unassignable > 0 && (
-          <span style={{ color: TONE.warn.fg }}>
-            <span className="num">{cap.unassignable}</span> unassignable
-          </span>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-/**
- * Work a vehicle cannot do, summarised on the vehicle screen.
- *
- * The queue deliberately excludes hardware, which is correct and also means a
- * dispatcher can work this board all shift without ever learning that fifty
- * docks are dead across the network. The exclusion is a routing decision, not
- * a reason to hide the number.
- */
-function MaintenanceCard() {
-  const workOrders = useConsole((s) => s.workOrders);
-  const scored = useDispatch((s) => s.scored);
-
-  const now = Date.now();
-  const stats = useMemo(() => backlog(workOrders, now), [workOrders, now]);
-  const hardware = useMemo(() => hardwareTotals(hardwareLoad(scored, now)), [scored, now]);
-
-  return (
-    <Card>
-      <CardHead
-        title="Maintenance"
-        right={<RailLink to="/maintenance/orders" label="Open maintenance operations" />}
-      />
-      <RailStat
-        value={stats.open}
-        unit={stats.open === 1 ? 'open order' : 'open orders'}
-        tone={stats.breached > 0 ? 'empty' : 'ink'}
-        label={
-          stats.breached > 0
-            ? `${stats.breached} past their response target.`
-            : stats.open === 0
-              ? 'Nothing outstanding.'
-              : 'All inside their response target.'
-        }
-      />
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--color-line-soft)] px-3.5 py-2 text-[10px] text-[var(--color-ink-3)]">
-        <span>
-          <span className="num" style={{ color: TONE.empty.fg }}>
-            {hardware.deadDocks.toLocaleString('en-US')}
-          </span>{' '}
-          docks dead
-        </span>
-        <span>
-          <span className="num" style={{ color: TONE.warn.fg }}>
-            {hardware.brokenBikes.toLocaleString('en-US')}
-          </span>{' '}
-          bikes broken
-        </span>
-        {hardware.crippled > 0 && (
-          <span>
-            <span className="num">{hardware.crippled}</span> sites mostly gone
-          </span>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-/** Fixtures: the feed carries no vehicles. Labelled as such on the card. */
-const RAIL_VEHICLE_IDS = ['#4', '#7', '#2'];
-
-function ActiveVehicles() {
-  const shown = RAIL_VEHICLE_IDS.map((id) => VEHICLES.find((t) => t.id === id)!).filter(Boolean);
-
-  return (
-    <Card>
-      <CardHead title="Active vehicles" right={<RailLink to="/fleet/vehicles" label="Open fleet operations" />} />
-      <ul className="px-3.5 pb-2">
-        {shown.map((vehicle, i) => (
-          <li
-            key={vehicle.id}
-            className={cn('py-2.5', i > 0 && 'border-t border-[var(--color-line-soft)]')}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="num text-[12px] font-semibold text-[var(--color-ink)]">
-                Vehicle {vehicle.id}
-              </span>
-              <span
-                className="inline-flex items-center gap-1.5 text-[10px] font-medium whitespace-nowrap"
-                style={{ color: TONE[VEHICLE_STATE_TONE[vehicle.state]].fg }}
-              >
-                <Dot tone={VEHICLE_STATE_TONE[vehicle.state]} size={5} />
-                {VEHICLE_STATE_LABEL[vehicle.state]}
-              </span>
-            </div>
-            <p className="mt-1 text-[10.5px] leading-snug text-[var(--color-ink-2)]">
-              {vehicle.where}
-            </p>
-            {vehicle.when && (
-              <p className="num mt-0.5 text-[10px] text-[var(--color-ink-3)]">{vehicle.when}</p>
-            )}
-          </li>
-        ))}
-      </ul>
-      <p className="border-t border-[var(--color-line-soft)] px-3.5 py-2 text-[10px] leading-snug text-[var(--color-ink-3)] italic">
-        Fixture — the feed carries no vehicles.
-      </p>
-    </Card>
-  );
-}
-
-function FillDistribution() {
-  const summary = useDispatch((s) => s.summary);
-
-  const slices = summary
-    ? [
-        { label: 'Healthy', value: summary.categoryCounts.healthy, tone: 'ok' as Tone },
-        { label: 'Low stock', value: summary.categoryCounts.starving, tone: 'warn' as Tone },
-        { label: 'Empty', value: summary.categoryCounts.empty, tone: 'empty' as Tone },
-        { label: 'Flooded', value: summary.categoryCounts.flooded, tone: 'flood-soft' as Tone },
-        { label: 'Full', value: summary.categoryCounts.full, tone: 'flood' as Tone },
-        { label: 'Unverified', value: summary.unverified, tone: 'mute' as Tone },
-      ].filter((s) => s.value > 0)
-    : [];
-
-  return (
-    <Card>
-      <CardHead
-        title="Fill distribution"
-        right={<RailLink to="/analytics" label="Open network performance" />}
-      />
-      <div className="flex items-center gap-3 px-3.5 pb-4">
-        {slices.length > 0 ? (
-          <>
-            <Donut
-              slices={slices}
-              size={92}
-              thickness={16}
-              centerValue={(summary?.total ?? 0).toLocaleString('en-US')}
-              centerLabel="STATIONS"
-            />
-            <Legend slices={slices} direction="column" size={10} />
-          </>
-        ) : (
-          <p className="py-4 text-[10px] text-[var(--color-ink-3)]">Waiting for the first poll…</p>
-        )}
-      </div>
-    </Card>
-  );
 }
 
