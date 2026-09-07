@@ -4,7 +4,7 @@ import { Finding } from '../ui/primitives';
 import { TONE, type Tone } from '../ui/tone';
 import { useConsole } from '../state/useConsole';
 import type { Situation } from '../model/situation';
-import { elapsed, since, trend } from './clauses';
+import { elapsed, since } from './clauses';
 
 /**
  * The situation headline, in words.
@@ -69,18 +69,18 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
       return <Finding icon="list-ordered" tone="mute" headline="Reading the live feed…" />;
 
     case 'blind': {
-      const stats: Stat[] = [
-        { label: 'silent', value: s.dark, tone: 'empty' },
-        { label: 'of docks', value: `${(s.dockShare * 100).toFixed(1)}%` },
-      ];
+      // Silent count and dock share are the headline and the hero; repeating
+      // them in the footer is the same fact three times on one card.
+      const stats: Stat[] = [];
       if (s.neverReported > 0) stats.push({ label: 'never reported', value: s.neverReported });
       return (
         <Finding
           icon="radio-tower"
           tone="empty"
           eyebrow="Blind spot"
-          headline={`The board can't see ${Math.round(s.dockShare * 100)}% of the network right now.`}
-          detail={
+          hero={`${Math.round(s.dockShare * 100)}%`}
+          heroNote="of the network the board cannot see"
+          headline={
             <>
               {s.dark} stations have gone quiet
               {s.worstBorough && s.worstBorough.stations >= 3 && (
@@ -89,7 +89,12 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
                   — {s.worstBorough.borough} worst, with {s.worstBorough.stations}
                 </>
               )}
-              {s.neverReported > 0 && <>; {s.neverReported} have never reported at all</>}. Their
+              .
+            </>
+          }
+          detail={
+            <>
+              {s.neverReported > 0 && <>{s.neverReported} have never reported at all. </>}Their
               counts are dropped from the ranking, so nothing below reflects them.
             </>
           }
@@ -109,18 +114,20 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
           icon="alert-triangle"
           tone="empty"
           eyebrow="Unserved"
-          headline={`${s.name} has scored critical for ${elapsed(s.minutes)} — no vehicle sent.`}
+          /* The duration is the alarming figure, so it is the big one — not the
+             score, which the KPI row is already shouting. The headline no
+             longer repeats it. */
+          hero={elapsed(s.minutes)}
+          heroNote="critical, no vehicle sent"
+          headline={`${s.name} — ${SIGNAL_WORD[s.signal] ?? 'failing'} ${since(s.failingSince)}`}
           detail={
             <>
-              {SIGNAL_WORD[s.signal] ?? 'failing'} {since(s.failingSince)}
-              {trend(s.delta)}. Something is momentarily worse on every poll, so it never reaches the
-              top of the list — but an hour {SIGNAL_WORD[s.signal] ?? 'down'} is an hour of riders
-              turned away.
+              Something is momentarily worse on every poll, so it never reaches the top of the list
+              — but an hour {SIGNAL_WORD[s.signal] ?? 'down'} is an hour of riders turned away.
             </>
           }
           stats={[
             { label: 'score', value: s.score, tone: 'empty' },
-            { label: 'failing', value: elapsed(s.minutes) },
             {
               label: 'trend',
               value: s.delta > 5 ? `+${s.delta}` : s.delta < -5 ? `${s.delta}` : 'flat',
@@ -141,19 +148,20 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
           icon="wrench"
           tone="empty"
           eyebrow="Hardware"
-          headline={`Hardware is failing at scale — ${num(s.deadDocks)} dead docks, ${(s.dockShare * 100).toFixed(1)}% of the network.`}
+          hero={num(s.deadDocks)}
+          heroNote={`dead docks · ${(s.dockShare * 100).toFixed(1)}% of the network`}
+          headline={`${s.sites} station${s.sites === 1 ? ' has' : 's have'} most of the rack out of service.`}
           detail={
             <>
-              {s.sites} station{s.sites === 1 ? ' has' : 's have'} most of the rack out of service
-              {s.brokenBikes > 0 && <>, and {num(s.brokenBikes)} bikes are disabled on top</>}. None
-              of it is a vehicle job — moving bikes cannot re-seat a dock.
+              {s.brokenBikes > 0 && <>{num(s.brokenBikes)} bikes are disabled on top. </>}None of it
+              is a vehicle job — moving bikes cannot re-seat a dock.
             </>
           }
-          stats={[
-            { label: 'dead docks', value: num(s.deadDocks), tone: 'empty' },
-            { label: 'of network', value: `${(s.dockShare * 100).toFixed(1)}%` },
-            { label: 'sites down', value: s.sites, tone: 'empty' },
-          ]}
+          stats={
+            s.brokenBikes > 0
+              ? [{ label: 'bikes disabled', value: num(s.brokenBikes), tone: 'warn' as const }]
+              : []
+          }
           actions={
             <ActionButton to="/maintenance/hardware" tone="empty" primary>
               Open Hardware →
@@ -168,21 +176,16 @@ export function SituationFinding({ situation: s }: { situation: Situation }) {
           icon="wrench"
           tone="warn"
           eyebrow="No repair"
-          headline={
-            s.count === 1
-              ? '1 out-of-service station has no repair scheduled.'
-              : `${s.count} out-of-service stations have no repair scheduled.`
-          }
+          hero={num(s.count)}
+          heroNote={`out-of-service station${s.count === 1 ? '' : 's'} with no repair scheduled`}
+          headline={`Worst is ${s.worstName} (${s.worstBorough}) — ${s.worstFault}.`}
           detail={
             <>
-              Worst is {s.worstName} ({s.worstBorough}) — {s.worstFault}, confirmed on the latest
-              feed. A dead station is a hole the size of its dock count, and no vehicle closes it.
+              Confirmed on the latest feed. A dead station is a hole the size of its dock count, and
+              no vehicle closes it.
             </>
           }
-          stats={[
-            { label: 'no repair', value: s.count, tone: 'warn' },
-            { label: 'out of service', value: s.total },
-          ]}
+          stats={[{ label: 'out of service in total', value: s.total }]}
           actions={
             <ActionButton to="/maintenance/orders" tone="warn" primary>
               Send a mechanic →

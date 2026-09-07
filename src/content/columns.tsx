@@ -39,38 +39,64 @@ export const SCORE_BANDS: { label: string; gloss: string; tone: Tone }[] = [
  */
 
 export const COLUMN_HELP: Record<string, ColumnHelpSpec> = {
+  /*
+   * Four lines and a key, not an essay.
+   *
+   * This was five paragraphs — the full argument for what the score does and
+   * does not measure, in a 290px hover. Nobody reads a wall of text with the
+   * pointer held still, and the one genuinely surprising fact (dead docks
+   * shrink the denominator) sat in the last of them, where it was never
+   * reached. The long form belongs on the method sheet and the drawer's
+   * receipt, both of which stay open while you read them.
+   */
   score: {
     what: (
       <>
-        How badly the <strong>distribution</strong> of bikes has failed here, 0 to 100, higher
-        being worse. Four things move it: which way the station has failed (empty or full scores
-        higher than merely low or crowded), how many riders it serves, how fresh the reading is,
+        How badly the <strong>distribution</strong> of bikes has failed here, 0 to 100, higher being
+        worse. Built from which way it failed, how many riders it serves, how fresh the reading is,
         and how long it has been failing.
       </>
     ),
     good: (
       <>
-        At or above {NEEDS_VEHICLE_THRESHOLD} the board says send a vehicle. Below that a station is
-        drifting but still serving riders.
-        <br />
-        <br />
-        <strong>What it does not measure:</strong> broken bikes, dead docks, flat station
-        batteries, or reported faults. None of those are inputs. A vehicle full of bikes cannot fix
-        any of them, so they are ranked separately on Maintenance Operations and a station whose
-        hardware has failed outright is routed off this board entirely.
-        <br />
-        <br />
-        Dead docks do reach the number by one indirect route: they shrink the slots the fill ratio
-        divides by, so a station can read as full because it is full, or because most of it is
-        broken.
+        At or above {NEEDS_VEHICLE_THRESHOLD} the board says send a vehicle. Broken bikes and dead
+        docks are not terms in it — but they do shrink the slots the fill ratio divides by, so a
+        station can read as full because it is full, or because most of it is broken.
       </>
     ),
     values: SCORE_BANDS,
+    more: { to: '/scoring', label: 'Every constant behind this number' },
   },
 
+  /*
+   * Not a column of its own — the arrow rides in the Urgency cell, and this is
+   * the ⓘ that explains it there. A separate header for one glyph would cost
+   * more width than the glyph does.
+   */
+  trend: {
+    what: 'Which way this station has moved since the board first flagged it this session.',
+    good: 'Only movement worth acting on is marked, and only in the bad direction. Where two stations score the same, the one still sliding is ranked first — the score says how bad, this says whether it is still getting worse.',
+    values: [
+      { label: '▲', gloss: 'worsening — more than 5 points worse than when first seen', tone: 'empty' },
+      { label: '▼', gloss: 'improving — recovering on its own, still shown until it clears', tone: 'mute' },
+      { label: 'blank', gloss: 'holding steady, or first seen this poll' },
+    ],
+  },
+
+  /*
+   * Headed "Bikes / Free", not "Docks". The one-word header was tidier and it
+   * lied: above "86 / 0" it says the first number is docks when it is bikes,
+   * and a header that needs its own tooltip to avoid misleading is not doing
+   * its job. Two words, both labelled.
+   */
   docks: {
-    what: 'The left number is bikes parked and ready to rent; the right is docks standing open.',
-    good: '"0 / 40" means nobody can rent here; "40 / 0" means nobody can return. Sorting orders by fill — the two counts are one fact from opposite ends. The board counts what the feed reports working, not the nameplate, because hundreds of stations disagree with their own.',
+    what: 'Bikes parked and ready to rent, over docks standing open.',
+    good: '"0 / 40" means nobody can rent here; "40 / 0" means nobody can return. Sorting orders by fill — the two counts are one fact from opposite ends. Both count what the feed reports working, not the nameplate, because hundreds of stations disagree with their own; where they differ the station line says how many docks actually work.',
+  },
+
+  move: {
+    what: 'What a vehicle should do on arrival, and how many bikes it involves.',
+    good: 'Warm means the station is short and a vehicle drops bikes off; cool means it is full and a vehicle picks them up. The count is the number that would return the station to about half full — the same figure the fleet screen totals into runs. Not sortable: ordering by size would put a 40-bike surplus above a station with nothing at all.',
   },
 
   fill: {

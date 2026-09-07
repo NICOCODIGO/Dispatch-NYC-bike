@@ -30,12 +30,12 @@ import { VEHICLES_ACTIVE, VEHICLES_TOTAL } from '../mock/data';
  * docks, which are a real field problem and belong beside the other health
  * numbers.
  *
- * "Sent to mechanic" is the newest, and it is the other crew's workload sitting
- * next to the vehicle's: "Needs rebalancing" is the queue this screen owns,
- * "Dead docks" is the damage that queue is not allowed to touch, and this is how
- * much of that damage has actually been turned into a work order somebody is on
- * the hook for. It is a count of open orders, not of broken stations — the feed
- * says what is broken, a person decides what gets a truck.
+ * "Work orders" is the newest, and it is the other crew's workload sitting next
+ * to the vehicle's: "Needs rebalancing" is the queue this screen owns, "Dead
+ * docks" is the damage that queue is not allowed to touch, and this is how much
+ * of that damage has actually been turned into an order somebody is on the hook
+ * for. It counts open orders, not broken stations — the feed says what is
+ * broken, a person decides what becomes a job.
  *
  * And three cards used to filter the table while three navigated — the same
  * shape carrying two contracts. Now every interactive card is a door to the
@@ -89,8 +89,14 @@ export function QueueStats({
         actionLabel="Open hardware and docks."
         hint="Docks the operator's own feed reports out of service — they can neither take a bike nor release one, so they quietly shrink every fill number on this board. A vehicle cannot re-seat a dock; these are a mechanic's job and are ranked on the Hardware & Docks screen."
       />
+      {/* "Work orders", not "Sent to mechanic": a work order is the thing this
+          board actually creates — the button on a mechanic-lane station raises
+          one — so the card should be named for the object, not for the gesture
+          that made it. It counts what is still open, which is the only figure a
+          dispatcher can act on; closed ones are history and live on the
+          Maintenance screen. */}
       <StatCard
-        label="Sent to mechanic"
+        label="Work orders"
         value={maintenance ? num(maintenance.open) : '—'}
         tone={maintenance && maintenance.breached > 0 ? 'empty' : 'ink'}
         foot={
@@ -104,7 +110,7 @@ export function QueueStats({
         }
         to="/maintenance/orders"
         actionLabel="Open maintenance operations."
-        hint="Open work orders for a technician — dock repairs, battery swaps, dead-bike pickups. The feed says what is broken; a person turns that into an order somebody owns. A vehicle full of bikes cannot close any of these, which is why they are counted apart from the rebalancing queue and from the dead-dock total beside it."
+        hint="Work orders still open for a technician — dock repairs, battery swaps, dead-bike pickups. Raising one from a station is how this board hands a fault to the mechanics; the count drops as they are closed. A vehicle full of bikes cannot close any of them, which is why they are counted apart from the rebalancing queue and from the dead-dock total beside it."
       />
       <StatCard
         label="Vehicles available"
@@ -158,15 +164,19 @@ export function QueueStats({
  * card fell into.
  */
 /**
- * Green good, amber close, red far off — Cleared is the one card on the row
- * where a high number is the good news, so it is the one that earns a traffic
- * light. The others count things that are broken, and colouring those by size
- * would just say "there are a lot of them" in red.
+ * Green when the session is genuinely recovering, neutral otherwise. Never red.
+ *
+ * It used to run the full traffic light, which put a red number under the word
+ * "Cleared" — the one card on the row whose subject is good news wearing the
+ * colour every other card uses for damage. A reader scanning the row saw red
+ * and looked for the problem, and the problem was that six stations had come
+ * back instead of sixty. A low recovery rate is worth knowing and is not an
+ * alarm, so it reads as ink.
  */
 const RECOVERY_TONE: Record<RecoveryBand, Tone> = {
   healthy: 'ok',
-  weak: 'warn',
-  poor: 'empty',
+  weak: 'ink',
+  poor: 'ink',
   unknown: 'mute',
 };
 

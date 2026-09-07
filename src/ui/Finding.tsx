@@ -2,7 +2,6 @@ import { useId, useState, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { Icon, type IconName } from './Icon';
 import { TONE, type Tone } from './tone';
-import { linkifyNode } from '../content/definitions';
 
 /* ---------------------------------------------------------------------------
    Finding — the sentence at the top of a screen that says what the numbers
@@ -21,9 +20,11 @@ import { linkifyNode } from '../content/definitions';
    `eyebrow` and `actions` are opt-in: a plain screen banner passes neither and
    looks the way it always did, while the situation headline on the queue passes
    a one-word category ("UNSERVED") and a button, which is the whole of what
-   makes it read as an alert rather than a caption. The card carries a light
-   wash of its tone now so it is noticed without a bigger footprint — the giant
-   hero number a redesign reached for is exactly the height this cannot spend.
+   makes it read as an alert rather than a caption, along with `hero` — the one
+   figure large enough to win against the KPI row above it. The card also
+   carries a light wash of its tone. None of it is free height: the wash and the
+   eyebrow cost nothing, and `hero` costs one line, spent only where the alert
+   turns on a single number.
 --------------------------------------------------------------------------- */
 
 export interface FindingStat {
@@ -36,6 +37,8 @@ export function Finding({
   tone = 'ink',
   icon,
   eyebrow,
+  hero,
+  heroNote,
   headline,
   detail,
   stats,
@@ -45,6 +48,18 @@ export function Finding({
   icon: IconName;
   /** One-word category, uppercased in the tone colour above the headline. */
   eyebrow?: string;
+  /**
+   * The one figure the alert is actually about, set large in the tone colour.
+   *
+   * Without it the banner lost a shouting match with its own KPI row: 22px
+   * stat values above a 12px sentence saying a station had been dead for an
+   * hour, so the furniture read as more urgent than the emergency. Only the
+   * scariest number belongs here — a duration, not a score, because "how long
+   * has nobody gone" is the part that should make somebody move.
+   */
+  hero?: ReactNode;
+  /** The small line under `hero`, naming what it measures. */
+  heroNote?: string;
   headline: ReactNode;
   detail?: ReactNode;
   stats?: FindingStat[];
@@ -72,8 +87,15 @@ export function Finding({
         </span>
 
         {/* The claim, and it stays put — collapsing the detail must not move
-            the sentence the reader is already on. Jargon is densest here, so
-            `linkifyNode` teaches the prose in place. */}
+            the sentence the reader is already on.
+
+            Not linkified. `linkifyNode` is right in body prose, where a reader
+            meeting "staleness" for the first time wants the definition, but an
+            alert headline is four words and every domain noun in it picked up a
+            dotted underline — "an hour full is an hour of riders turned away"
+            came out with three underlined words and read like a wiki stub. In a
+            block whose whole job is to be glanced at, the only thing that should
+            look clickable is the thing you are meant to click. */}
         <div className="min-w-0 flex-1">
           {eyebrow && (
             <p
@@ -83,13 +105,30 @@ export function Finding({
               {eyebrow}
             </p>
           )}
+
+          {hero && (
+            <p className={cn('flex items-baseline gap-2', eyebrow && 'mt-1.5')}>
+              <span
+                className="num text-[26px] leading-none font-bold tracking-tight"
+                style={{ color: t.fg }}
+              >
+                {hero}
+              </span>
+              {heroNote && (
+                <span className="text-[11px] leading-none" style={{ color: t.fg }}>
+                  {heroNote}
+                </span>
+              )}
+            </p>
+          )}
+
           <p
             className={cn(
               'text-[12px] leading-snug font-semibold text-[var(--color-ink)]',
-              eyebrow && 'mt-1',
+              Boolean(eyebrow || hero) && 'mt-1.5',
             )}
           >
-            {linkifyNode(headline)}
+            {headline}
           </p>
         </div>
 
@@ -126,15 +165,19 @@ export function Finding({
         >
           <div className="min-h-0 overflow-hidden">
             <p className="pb-2.5 pl-[30px] text-[12px] leading-normal text-[var(--color-ink-2)]">
-              {linkifyNode(detail)}
+              {detail}
             </p>
           </div>
         </div>
       )}
 
+      {/* Left-packed, not `justify-between`. Flung to opposite ends of a 1200px
+          card the button and the figures read as two unrelated controls;
+          sitting together they read as one footer — the thing to do about it,
+          and the evidence for it. */}
       {hasFooter && (
         <div
-          className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1.5 border-t px-3.5 py-1.5"
+          className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t px-3.5 py-1.5"
           style={{ borderColor: t.line }}
         >
           {actions && <div className="flex items-center gap-2">{actions}</div>}

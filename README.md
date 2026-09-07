@@ -190,6 +190,45 @@ written down in the official documentation.
   claim more flat bikes than the station has. They're an illustration of the
   workflow, not a fix for the blind spot.
 
+### What's real
+
+Field by field, so the boundary between what the feed states and what this app
+models is written down rather than implied. The **Simulated** pills stay on the
+screens themselves, marking provenance on the thing itself; this is the whole
+inventory in one place.
+
+| Field | Source |
+|---|---|
+| Name, coordinates, nameplate capacity | Live feed |
+| Bikes available, e-bikes available, free docks | Live feed |
+| Bikes disabled, docks disabled | Live feed |
+| Renting / returning / installed flags | Live feed |
+| Borough | Derived |
+| Fill ratio and usable slots | Derived |
+| Urgency score, category, triage lane | Derived |
+| How long a station has been failing | Observed this session |
+| Dispatch outcomes and recovery rate | Observed this session |
+| Frame numbers | Simulated |
+| Which bikes are electric | Simulated |
+| Which bikes are broken | Simulated |
+| Fault reasons (flat tyre, brakes, stuck release…) | Simulated |
+| Battery charge | Simulated |
+| Which stations charge their docks | Simulated |
+| Vehicles — positions, load, capacity, state | Fixture |
+| The roster — people, shifts, roles, depots | Fixture |
+| Seed work orders | Fixture |
+| SLA response targets | Fixture |
+| Runs per driver per shift | Fixture |
+
+**Live feed** is read straight from Citi Bike's public GBFS endpoints,
+unmodified. **Derived** is computed from feed values by a tested, pure module —
+no new facts, just arithmetic. **Observed this session** is genuinely measured,
+but only while the tab has been open; refreshing loses it. **Simulated** is
+invented and then *sized by a real count from the feed*, so it can elaborate
+what GBFS omits without ever contradicting what GBFS states. **Fixture** is
+invented with nothing behind it — GBFS carries no vehicles, staff or work
+orders, so there is no real number to anchor those to.
+
 ### One more thing worth being clear about
 
 This covers **Citi Bike only.** It doesn't include private rental shops, and it

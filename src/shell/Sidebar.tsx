@@ -187,6 +187,13 @@ export function Sidebar() {
           ))}
 
           <NavRow to="/analytics" label="Analytics" icon="line-chart" />
+
+          {/* Reference, below a rule. Scoring is not a screen anyone opens on a
+              shift — it is where you go to argue with the number, which is a
+              different kind of visit from the six above it. Separating it costs
+              one hairline and stops it reading as a seventh daily screen. */}
+          <li aria-hidden="true" className="my-1.5 border-t border-[var(--color-rail-line)]" />
+          <NavRow to="/scoring" label="Scoring" icon="file-text" />
         </ul>
       </nav>
 
@@ -264,6 +271,12 @@ function LiveStrip() {
    * check, the age is why, and the wall-clock time is a receipt you only want
    * when something looks wrong. Three lines of the same 10px grey made you read
    * all three to find out which one mattered.
+   *
+   * The sub-line is gone in the healthy case. "updated 12s ago" under the word
+   * Live is a clock ticking in the corner of every screen to say nothing has
+   * happened, and the timestamp on the same row already carries it. It comes
+   * back the moment the feed is not fine, which is when the age stops being
+   * decoration and becomes the news.
    */
   const state = error
     ? 'Feed offline'
@@ -277,7 +290,9 @@ function LiveStrip() {
     ? 'retrying — last good data shown'
     : fetchedAtMs === null
       ? 'waiting for the first poll'
-      : `updated ${formatAgo(now - fetchedAtMs)} ago`;
+      : stale
+        ? `updated ${formatAgo(now - fetchedAtMs)} ago`
+        : null;
 
   return (
     <div
@@ -316,9 +331,11 @@ function LiveStrip() {
       {/* Aligned under the state word, not the dot: 26px icon slot + the 8px
           gap. The indent is what makes it read as a sub-line rather than a
           second, competing row. */}
-      <p className="mt-1.5 truncate pl-[34px] text-[10px] leading-none text-[var(--color-rail-ink-3)]">
-        {detail}
-      </p>
+      {detail && (
+        <p className="mt-1.5 truncate pl-[34px] text-[10px] leading-none text-[var(--color-rail-ink-3)]">
+          {detail}
+        </p>
+      )}
     </div>
   );
 }
